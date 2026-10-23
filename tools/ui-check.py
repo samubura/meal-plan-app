@@ -15,9 +15,13 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 url = f'http://127.0.0.1:{srv.server_port}/'
 
 calls = []
+limited = {'left': 1}  # Google answers one request with 403 rateLimitExceeded: the app must retry
 def gapi(route):
     r = route.request
     calls.append((r.method, r.url.split('/calendar/v3')[1], r.post_data))
+    if r.method == 'PUT' and limited['left']:
+        limited['left'] -= 1
+        return route.fulfill(status=403, json={'error': {'errors': [{'reason': 'rateLimitExceeded'}], 'message': 'Rate Limit Exceeded'}})
     if 'calendarList' in r.url:
         return route.fulfill(json={'items': [{'id': 'me@x', 'summary': 'Me', 'primary': True}, {'id': 'family@group', 'summary': 'Family'}]})
     if r.method == 'POST' and r.url.endswith('/events') and '"id":"meal20261026l"' in (r.post_data or ''):
@@ -130,6 +134,11 @@ with sync_playwright() as p:
     n = len(calls)
     page.click('#syncBtn'); wait_snack(page, 'Fatto')
     sent = sent_since(n)
+    resync = calls[n:]
+    assert all(c[0] == 'PUT' for c in resync), [c[0] for c in resync]  # known events: updated directly
+    assert len(resync) == 14, len(resync)  # one request per meal
+    assert limited['left'] == 0 and sum(c[0] == 'PUT' and c[1].endswith('/meal20261026l') for c in calls[:n]) == 2, 'the 403 rate limit was retried'
+    print('re-sync requests:', len(resync), '(one update per meal); 403 rate limit retried: ok')
     assert sent['meal20261026l'] == f'Pranzo: {d}' and sent['meal20261027d'] == f'Cena: {a}' and sent['meal20261026d'] == 'Cena: pesce e patate', sent
     assert not any('calendarList' in c[1] for c in calls[n:]), 'the chosen calendar is remembered'
     print('re-sync: ok')

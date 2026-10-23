@@ -712,7 +712,11 @@ async function syncNow() {
       store.set('calendar', cal); store.set('calendarName', c.summary);
     }
     const days = plan.days.map((d) => ({ lunch: d.lunch.text, dinner: d.dinner.text }));
-    const { saved, removed } = await syncWeek(cal, days, plan.weekStart, times());
+    // This plan as last synced: its events exist, so they are updated directly (fewer requests). A new
+    // scan starts a new plan (synced: null), so another week's events are never touched.
+    let previous = null;
+    try { const [ws, ds] = JSON.parse(plan.synced || 'null') || []; if (ws) previous = { weekStart: ws, days: ds.map(([lunch, dinner]) => ({ lunch, dinner })) }; } catch {}
+    const { saved, removed } = await syncWeek(cal, days, plan.weekStart, times(), previous);
     plan.synced = snapshot(); savePlan();
     snack(`Fatto: ${plural(saved, 'pasto', 'pasti')} nel calendario${removed ? `, ${plural(removed, 'tolto', 'tolti')}` : ''}.`);
   } catch (e) {
@@ -909,7 +913,17 @@ $('shutter').addEventListener('click', async () => {
 history.replaceState({ screen: 'home' }, '');
 showScreen('home');
 if (!plan) go('scan');
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// Updates: the service worker fetches new files when the app opens; when a new version takes over
+// (also checked whenever the app comes back to the foreground), offer a reload.
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) snack('È disponibile una nuova versione dell’app.', false, { label: 'Aggiorna', run: () => location.reload() });
+  });
+}
 </script>
 </body>
 </html>
