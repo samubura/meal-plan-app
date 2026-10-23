@@ -91,6 +91,8 @@ with sync_playwright() as p:
     assert page.is_visible('#home') and page.text_content('#syncText') == 'Sincronizzato'
     page.wait_for_timeout(400)
     page.screenshot(path=out / '6-plan.png', full_page=True)
+    assert page.is_visible('#todayCard') and page.locator('#todayCard .next').count() == 1, 'today card with the next meal'
+    print('today card:', page.text_content('#todayCard .head').strip())
     posts = [json.loads(c[2]) for c in calls if c[0] == 'POST' and c[2]]
     assert all(re.fullmatch(r'meal2026\d{4}[ld]', x['id']) and x['summary'].startswith(('Pranzo: ', 'Cena: ')) and x['start']['timeZone'] for x in posts)
     assert any(c[0] == 'PUT' and c[1].endswith('/meal20261026l') for c in calls), 'conflict must update'
@@ -149,6 +151,15 @@ with sync_playwright() as p:
     page.click('#menuBtn'); page.wait_for_selector('#settingsSheet.open')
     assert page.text_content('#calName') == 'Family'
     assert page.text_content('#gAccount') == 'Account: me@x'  # remembered, passed to Google as a hint
+    # Gemini key: checked with Google (mocked) before it is saved; the switch shows only with a valid key.
+    page.route('https://generativelanguage.googleapis.com/**', lambda r: r.fulfill(json={'models': [{'name': 'models/gemini-3.6-flash', 'supportedGenerationMethods': ['generateContent']}]})
+        if r.request.headers.get('x-goog-api-key') == 'good' else r.fulfill(status=400, json={'error': {'message': 'API key not valid'}}))
+    page.fill('#geminiKey', 'bad'); page.dispatch_event('#geminiKey', 'change'); wait_snack(page, 'Chiave non valida')
+    assert page.evaluate('localStorage.getItem("mealplan.geminiKey")') in (None, 'null')
+    page.fill('#geminiKey', 'good'); page.dispatch_event('#geminiKey', 'change'); wait_snack(page, 'Chiave valida')
+    assert json.loads(page.evaluate('localStorage.getItem("mealplan.geminiKey")')) == 'good'
+    page.fill('#geminiKey', ''); page.dispatch_event('#geminiKey', 'change')
+    print('gemini key check: ok')
     page.screenshot(path=out / '9-settings.png')
     page.go_back(); page.wait_for_timeout(300)
     assert not page.is_visible('#settingsSheet') and page.is_visible('#home')
@@ -162,7 +173,7 @@ with sync_playwright() as p:
     ctx.close()
 
     # Optional Gemini reading (mocked): used when it answers, on-phone fallback when it fails.
-    for mode in ('ok', 'quota'):
+    for mode in ('ok', 'quota', 'reread'):
         ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         page = ctx.new_page()
         def gem(route, *_, mode=mode):  # Playwright may pass the request as 2nd argument
@@ -175,8 +186,17 @@ with sync_playwright() as p:
         page.route('https://generativelanguage.googleapis.com/**', gem)
         page.goto(url); page.evaluate('localStorage.setItem("mealplan.geminiKey", JSON.stringify("test-key"))'); page.reload()
         page.wait_for_selector('#scan:not([hidden])')
+        assert page.is_visible('#geminiRow') and not page.is_checked('#useGemini'), 'Gemini is a choice, off until chosen'
+        if mode != 'reread':
+            page.check('#useGemini'); page.reload(); page.wait_for_selector('#scan:not([hidden])')
+            assert page.is_checked('#useGemini'), 'the choice is remembered'
         page.set_input_files('#gallery', str(photo))
         page.wait_for_selector('#review:not([hidden])', timeout=300_000)
+        if mode == 'reread':  # read on the phone, then "Rileggi con Gemini" on the same photo
+            assert page.is_visible('#reread') and page.input_value('#r-mon-lunch') != 'speck e zucchine'
+            page.click('#reread'); page.wait_for_function('document.querySelector("#reviewNote").textContent.startsWith("Riletto")')
+            assert page.input_value('#r-mon-lunch') == 'speck e zucchine'
+            print('gemini reread: ok'); ctx.close(); continue
         note, mon = page.text_content('#reviewNote'), page.input_value('#r-mon-lunch')
         if mode == 'ok':
             assert note.startswith('Letto con Gemini') and mon == 'speck e zucchine' and page.input_value('#r-mon-dinner') == 'Toscana / mamma', (note, mon)

@@ -1,4 +1,4 @@
-# Meal Plan Scanner
+# Meal Plan
 
 A phone web app (PWA) that reads a photo of a handwritten weekly meal plan (PRANZO / CENA,
 Monday to Sunday) and puts the meals straight into a shared Google calendar.

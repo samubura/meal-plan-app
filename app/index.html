@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Meal Plan Scanner</title>
+<title>Meal Plan</title>
 <meta name="description" content="Fotografa il piano dei pasti scritto a mano e aggiungilo al calendario.">
 <meta name="theme-color" content="#f2f6f0" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121a15" media="(prefers-color-scheme: dark)">
@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Pasti">
+<meta name="apple-mobile-web-app-title" content="Meal Plan">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
   :root {
@@ -83,10 +83,11 @@
   .linklike { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; min-height: 44px; font-weight: 600; }
   .fab {
     position: fixed; right: calc(env(safe-area-inset-right) + 16px); bottom: calc(env(safe-area-inset-bottom) + 20px); z-index: 6;
-    display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 0 22px 0 18px; border-radius: 18px; border: 0;
-    background: var(--accent); color: var(--accent-text); font-weight: 700; box-shadow: var(--shadow-lift); cursor: pointer;
+    display: grid; place-items: center; width: 64px; height: 64px; padding: 0; border-radius: 50%; border: 0;
+    background: var(--accent); color: var(--accent-text); box-shadow: var(--shadow-lift); cursor: pointer;
   }
-  .fab svg { width: 24px; height: 24px; }
+  .fab:active { transform: scale(.96); }
+  .fab svg { width: 28px; height: 28px; }
   .bottombar {
     position: sticky; bottom: 0; z-index: 5; display: flex; gap: 10px; padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
     background: var(--bg); box-shadow: 0 -1px 0 var(--line);
@@ -100,6 +101,28 @@
   .day h2 { display: flex; align-items: center; gap: 8px; font-size: .92rem; margin: 0 0 5px 4px; font-weight: 700; }
   .day h2 .date { color: var(--muted); font-weight: 600; }
   .chip-today { font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
+  .day.is-today .meals { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+  .day.is-today h2 { color: var(--accent); }
+  /* "today" card at the top of the plan */
+  .today { background: var(--accent-soft); color: var(--accent-soft-text); border-radius: 20px; padding: 14px 14px 10px; margin: 4px 0 6px; }
+  .today .head { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 8px; }
+  .today .head b { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  .today .head span { font-size: 1.15rem; font-weight: 700; }
+  .today-meal { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; border-radius: 14px; background: var(--surface); color: var(--text);
+    padding: 12px 14px; margin: 0 0 6px; cursor: pointer; box-shadow: var(--shadow); min-height: 64px; }
+  .today-meal .when { flex: none; width: 64px; font-size: .78rem; font-weight: 700; color: var(--accent); display: grid; gap: 2px; }
+  .today-meal .when span { display: flex; align-items: center; gap: 3px; color: var(--muted); font-weight: 600; }
+  .today-meal .when svg { width: 13px; height: 13px; }
+  .today-meal .what { flex: 1; min-width: 0; font-size: 1.2rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .today-meal .what.empty { color: var(--muted); font-weight: 400; font-style: italic; font-size: 1rem; }
+  .today-meal.past { opacity: .55; box-shadow: none; }
+  .today-meal .next { flex: none; font-size: .72rem; font-weight: 700; padding: 3px 8px; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
+  .today .cta { margin-top: 4px; }
+  .section-title { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 18px 4px 0; font-weight: 700; }
+  /* optional Gemini switch on the scan screen */
+  .switch { display: flex; align-items: center; gap: 12px; text-align: left; margin: 14px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); cursor: pointer; }
+  .switch input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+  .switch small { display: block; color: var(--muted); font-size: .85rem; }
   .meals { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
   .meal { display: flex; align-items: center; min-height: 54px; border-top: 1px solid var(--line); background: var(--surface); position: relative; }
   .meal:first-child { border-top: 0; }
@@ -240,10 +263,12 @@
       <p>Fotografa la pagina del quaderno: i pasti arrivano da soli nel calendario.</p>
       <button class="btn primary" type="button" data-go="scan"><svg><use href="#i-cam"/></svg>Scansiona la settimana</button>
     </div>
+    <section id="todayCard" class="today" hidden aria-label="Oggi"></section>
+    <p id="weekLabel" class="section-title" hidden>Tutta la settimana</p>
     <div id="plan"></div>
     <p id="planHint" class="hint muted" hidden>Trascina ≡ per spostare un pasto su un altro giorno, tocca un pasto per modificarlo.</p>
   </div>
-  <button id="fab" class="fab" type="button" data-go="scan" hidden><svg><use href="#i-cam"/></svg>Nuova settimana</button>
+  <button id="fab" class="fab" type="button" data-go="scan" hidden aria-label="Nuova settimana" title="Nuova settimana"><svg><use href="#i-cam"/></svg></button>
 </section>
 
 <!-- Nuova settimana -->
@@ -261,6 +286,7 @@
       <input id="camera" type="file" accept="image/*" capture="environment">
       <label class="btn" for="gallery"><svg><use href="#i-image"/></svg>Scegli dalla galleria</label>
       <input id="gallery" type="file" accept="image/*">
+      <label id="geminiRow" class="switch" hidden><input type="checkbox" id="useGemini"><span><b>Leggi con Gemini</b><small>Più preciso. La foto viene inviata a Google.</small></span></label>
       <p style="margin:16px 0 0">oppure <button type="button" id="manual" class="linklike">scrivi la settimana a mano</button></p>
     </div>
     <ul class="tips">
@@ -290,6 +316,7 @@
   </header>
   <div class="content" style="padding-bottom:24px">
     <p class="notice" id="reviewNote"></p>
+    <button class="btn tonal" id="reread" type="button" hidden style="margin:-4px 0 14px">Rileggi con Gemini</button>
     <label class="field">Settimana dal (lunedì)<input type="date" id="weekStart" required></label>
     <div id="reviewDays"></div>
   </div>
@@ -329,8 +356,8 @@
   <div class="row-between"><span id="calName" class="muted">Nessun calendario scelto</span><button class="btn tonal" id="changeCal" type="button" style="width:auto;min-height:44px">Cambia</button></div>
   <div class="row-between"><span id="gAccount" class="muted" style="overflow-wrap:anywhere"></span><button class="btn text" id="otherAccount" type="button" style="width:auto;min-height:44px">Usa un altro account</button></div>
   <h3>Lettura con Gemini (facoltativa)</h3>
-  <p class="muted" style="margin:0 0 10px;font-size:.9rem">Con una chiave gratuita di Google AI Studio la foto viene letta da Gemini, molto più preciso.
-    La foto viene inviata a Google. Se Gemini non risponde (limite, rete, servizio cambiato) l’app usa da sola la lettura sul telefono.</p>
+  <p class="muted" style="margin:0 0 10px;font-size:.9rem">Con una chiave gratuita di Google AI Studio, prima di scattare puoi scegliere «Leggi con Gemini»,
+    molto più preciso: in quel caso la foto viene inviata a Google. Se Gemini non risponde (limite, rete, servizio cambiato) l’app usa la lettura sul telefono.</p>
   <label class="field">Chiave API<input type="password" id="geminiKey" autocomplete="off" spellcheck="false" placeholder="Incolla la chiave"></label>
   <div class="row-between"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="linklike">Crea una chiave</a>
     <button class="btn text danger" id="geminiClear" type="button" style="width:auto;min-height:44px">Rimuovi</button></div>
@@ -373,7 +400,7 @@ import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/o
 import { scanPlan, buildICS, DAY_KEYS } from './lib.js';
 import { createRecognizer, decoderFor, unsure } from './ocr.js';
 import { CLIENT_ID, loadGis, signIn, calendars, syncWeek, googleAccount, forgetGoogle } from './gcal.js';
-import { readPlanWithGemini } from './gemini.js';
+import { readPlanWithGemini, flashModels } from './gemini.js';
 
 // Single-threaded WASM: GitHub Pages can't send the headers threads need, and it's gentle on memory.
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
@@ -468,6 +495,7 @@ const SCREENS = ['home', 'scan', 'working', 'review'];
 let sheet = null;
 function showScreen(id) {
   for (const s of SCREENS) $(s).hidden = s !== id;
+  if (id === 'scan') { $('geminiRow').hidden = !store.get('geminiKey'); $('useGemini').checked = !!store.get('useGemini'); } // the user's last choice
   window.scrollTo(0, 0);
   if (id === 'home') renderPlan();
 }
@@ -533,12 +561,14 @@ const dirty = () => plan && plan.synced !== snapshot();
 function renderPlan() {
   const has = !!plan;
   $('planEmpty').hidden = has; $('fab').hidden = !has; $('planHint').hidden = !has;
-  $('weekTitle').textContent = has ? `${shortDate(dateOf(plan.weekStart, 0))} – ${shortDate(dateOf(plan.weekStart, 6))}` : 'Meal Plan Scanner';
+  $('weekTitle').textContent = has ? `${shortDate(dateOf(plan.weekStart, 0))} – ${shortDate(dateOf(plan.weekStart, 6))}` : 'Meal Plan';
   renderSync();
+  $('todayCard').hidden = !has; $('weekLabel').hidden = !has;
   if (!has) { $('plan').replaceChildren(); return; }
+  renderToday();
   const today = iso(new Date()), t = times();
   $('plan').innerHTML = plan.days.map((d, di) => `
-    <section class="day" aria-label="${DAY_LABELS[di]}">
+    <section class="day${iso(dateOf(plan.weekStart, di)) === today ? ' is-today' : ''}" aria-label="${DAY_LABELS[di]}">
       <h2>${DAY_LABELS[di]} <span class="date">${shortDate(dateOf(plan.weekStart, di))}</span>${iso(dateOf(plan.weekStart, di)) === today ? '<span class="chip-today">oggi</span>' : ''}</h2>
       <div class="meals">${SLOTS.map((slot, si) => {
         const i = di * 2 + si, text = d[slot].text;
@@ -554,6 +584,33 @@ function renderPlan() {
   $('raw').textContent = plan.raw || '(nessuna scansione)';
   $('planWeekStart').value = plan.weekStart;
 }
+// The card at the top: today's meals (tomorrow's after dinner), the next one marked; before the week
+// starts, its first day; after it ends, an invitation to scan the next one.
+function renderToday() {
+  const t = times(), now = new Date(), mins = now.getHours() * 60 + now.getMinutes();
+  const at = (hm) => { const [h, m] = hm.split(':').map(Number); return h * 60 + m; };
+  const lunchEnd = at(t.lunchTime) + t.lunchMin, dinnerEnd = at(t.dinnerTime) + t.dinnerMin;
+  const start = dateOf(plan.weekStart, 0), dayIdx = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - start) / 864e5);
+  let di = dayIdx, label = 'Oggi', next = mins < lunchEnd ? 'lunch' : mins < dinnerEnd ? 'dinner' : null;
+  if (dayIdx >= 0 && dayIdx <= 6 && !next) { di = dayIdx + 1; label = 'Domani'; next = 'lunch'; }
+  if (dayIdx < 0) { di = 0; label = 'Si comincia'; next = 'lunch'; }
+  if (di > 6) {
+    $('todayCard').innerHTML = `<div class="head"><b>Settimana finita</b></div>
+      <p style="margin:0 2px 10px">Fotografa la pagina della prossima settimana.</p>
+      <button class="btn primary cta" type="button" data-go="scan"><svg><use href="#i-cam"/></svg>Nuova settimana</button>`;
+    return;
+  }
+  const d = dateOf(plan.weekStart, di);
+  $('todayCard').innerHTML = `<div class="head"><b>${label}</b><span>${DAY_LABELS[di]} ${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</span></div>` +
+    SLOTS.map((slot, si) => {
+      const text = plan.days[di][slot].text, past = label === 'Oggi' && next === 'dinner' && slot === 'lunch';
+      return `<button class="today-meal${past ? ' past' : ''}" type="button" data-edit="${di * 2 + si}" aria-label="${SLOT_LABELS[slot]}: ${esc(text || 'nessun pasto')}. Modifica">
+        <span class="when">${SLOT_LABELS[slot]}<span><svg><use href="#i-${slot === 'lunch' ? 'sun' : 'moon'}"/></svg>${slot === 'lunch' ? t.lunchTime : t.dinnerTime}</span></span>
+        <span class="what${text ? '' : ' empty'}">${text ? esc(text) : 'Nessun pasto'}</span>${slot === next ? `<span class="next">${label === 'Oggi' && mins >= at(slot === 'lunch' ? t.lunchTime : t.dinnerTime) ? 'Adesso' : 'Prossimo'}</span>` : ''}
+      </button>`;
+    }).join('');
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('home').hidden) renderPlan(); });
 function renderSync() {
   const show = !!plan && !!CLIENT_ID;
   $('syncBtn').hidden = !show;
@@ -579,7 +636,7 @@ function swapMeals(a, b, offer = undoable()) {
 // Edit sheet
 let editing = null;
 const slotName = (i) => `${DAY_LABELS[i >> 1]} · ${SLOT_LABELS[SLOTS[i & 1]]}`;
-$('plan').addEventListener('click', (e) => {
+function openEdit(e) {
   const b = e.target.closest('[data-edit]');
   if (!b || dragState) return;
   editing = +b.dataset.edit;
@@ -590,7 +647,9 @@ $('plan').addEventListener('click', (e) => {
   $('editMove').value = editing;
   openSheet('editSheet');
   setTimeout(() => $('editText').focus(), 250);
-});
+}
+$('plan').addEventListener('click', openEdit);
+$('todayCard').addEventListener('click', openEdit);
 function saveEdit(text) {
   const offer = undoable();
   const m = meal(editing), t = text.trim(), changed = t !== m.text;
@@ -672,7 +731,21 @@ $('planWeekStart').addEventListener('change', () => {
   plan.weekStart = $('planWeekStart').value; savePlan(); renderPlan();
 });
 $('geminiKey').value = store.get('geminiKey') || '';
-$('geminiKey').addEventListener('change', () => { store.set('geminiKey', $('geminiKey').value.trim() || null); snack($('geminiKey').value.trim() ? 'Le prossime foto saranno lette con Gemini.' : 'Gemini disattivato.'); });
+// A key is saved only once Google accepts it (listing the models doesn't use the reading quota).
+$('geminiKey').addEventListener('change', async () => {
+  const key = $('geminiKey').value.trim();
+  if (!key) { store.set('geminiKey', null); return snack('Gemini disattivato.'); }
+  snack('Verifico la chiave…');
+  try {
+    await flashModels(key);
+    store.set('geminiKey', key);
+    snack('Chiave valida: ora puoi accendere «Leggi con Gemini» prima di scattare.');
+  } catch (e) {
+    store.set('geminiKey', null);
+    snack(e.status === 400 || e.status === 403 ? 'Chiave non valida: controlla di averla copiata tutta.' : `Non riesco a verificare la chiave (${e.message}).`, true);
+  }
+});
+$('useGemini').addEventListener('change', () => store.set('useGemini', $('useGemini').checked));
 $('geminiClear').addEventListener('click', () => { $('geminiKey').value = ''; store.set('geminiKey', null); snack('Chiave rimossa: le foto si leggono sul telefono.'); });
 $('otherAccount').addEventListener('click', () => {
   forgetGoogle(); store.set('calendar', null); store.set('calendarName', null);
@@ -742,8 +815,9 @@ if (CLIENT_ID) loadGis().catch(() => {}); // ready before the tap, so the sign-i
 
 // ---- review (after a scan, or typing by hand) ----
 let draft = null; // {days: [{lunch, dinner}], raw}
-function openReview(days, raw, note, unsureMeals = null) {
+function openReview(days, raw, note, unsureMeals = null, source = 'phone') {
   draft = { raw };
+  $('reread').hidden = !(source === 'phone' && lastJpeg && store.get('geminiKey'));
   document.body.append(SUG); SUG.hidden = true; // out of the way of the re-render
   $('weekStart').value = nextMonday();
   $('reviewNote').textContent = note;
@@ -772,6 +846,24 @@ async function saveReview(sync) {
   if (sync && CLIENT_ID) await syncNow(); // still inside the tap, so Google's popup isn't blocked
   else snack('Piano salvato.');
 }
+// Same photo, read again by Gemini (when the phone's reading came out badly).
+$('reread').addEventListener('click', async () => {
+  const btn = $('reread');
+  btn.disabled = true; btn.textContent = 'Leggo con Gemini…';
+  try {
+    const g = await withTimeout(readPlanWithGemini(store.get('geminiKey'), lastJpeg, { dishes: dishes() }), 50000);
+    if (!g.days.some((d) => d.lunch || d.dinner)) throw new Error('Gemini non ha trovato pasti');
+    g.days.forEach((d, i) => SLOTS.forEach((s) => {
+      const el = $(`r-${DAY_KEYS[i]}-${s}`);
+      el.value = d[s]; delete el.dataset.edited; el.classList.remove('unsure'); autosize(el);
+    }));
+    draft.raw = `Riletto con Gemini (${g.model.replace('models/', '')}).\n\n${draft.raw}`;
+    $('reviewNote').textContent = 'Riletto con Gemini. Controlla comunque i pasti prima di salvare.';
+    btn.hidden = true;
+  } catch (e) {
+    snack(`Gemini non disponibile (${e.status === 429 ? 'limite gratuito raggiunto' : e.message}).`, true);
+  } finally { btn.disabled = false; btn.textContent = 'Rileggi con Gemini'; }
+});
 $('saveOnly').addEventListener('click', () => saveReview(false));
 $('saveSync').addEventListener('click', () => saveReview(true));
 if (!CLIENT_ID) { $('saveSync').hidden = true; $('saveOnly').classList.replace('text', 'primary'); $('saveOnly').style.flex = '1'; }
@@ -803,6 +895,7 @@ function jpegFor(canvas, max = 1600) {
   c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
+let lastJpeg = null;
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Gemini non ha risposto in tempo')), ms))]);
 async function scan(file) {
   go('working');
@@ -814,13 +907,14 @@ async function scan(file) {
     const { rgba, w, h, canvas } = await loadPhoto(file);
     // Optional: Gemini first; on any failure, the on-phone reader below.
     const key = store.get('geminiKey');
+    lastJpeg = key ? jpegFor(canvas) : null; // for "Rileggi con Gemini" in the review
     let geminiNote = '';
-    if (key && navigator.onLine !== false) {
+    if (key && $('useGemini').checked && navigator.onLine !== false) {
       status('Leggo con Gemini…', 0.05);
       try {
-        const g = await withTimeout(readPlanWithGemini(key, jpegFor(canvas), { dishes: dishes() }), 50000); // 3 models x 15 s at most
+        const g = await withTimeout(readPlanWithGemini(key, lastJpeg, { dishes: dishes() }), 50000); // 3 models x 15 s at most
         if (!g.days.some((d) => d.lunch || d.dinner)) throw new Error('Gemini non ha trovato pasti');
-        openReview(g.days, `Letto con Gemini (${g.model.replace('models/', '')}).`, 'Letto con Gemini. Controlla comunque i pasti prima di salvare.');
+        openReview(g.days, `Letto con Gemini (${g.model.replace('models/', '')}).`, 'Letto con Gemini. Controlla comunque i pasti prima di salvare.', null, 'gemini');
         return;
       } catch (e) {
         console.warn(e);
