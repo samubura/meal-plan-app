@@ -585,8 +585,7 @@ const ROW_VARIANTS = [['gray', 0.6], ['gray', 0.8], ['bin', 0.6], ['bin', 0.8]];
 // onBand(row, img): debug hook, gets every line image that is read.
 // decode: ocr.js decoderFor(dishes) (context-aware decoding of readLine's frames).
 // isUnsure: ocr.js unsure (flags meals to double-check).
-// continuation: also read the strip under each dinner (a dish that wraps onto a second line). Under a
-// lunch it would pick up the dinner line, so only dinners (measured on private/dataset).
+// continuation: also read the line below a dinner (a dish that wraps).
 export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress = () => {}, readLine, decode, isUnsure, lineVariants = ['gray'], onBand, tight = {}, continuation = true } = {}) {
   const variants = readLine ? lineVariants : ROW_VARIANTS;
   let total = 2 + 14 * variants.length, done = 0;
@@ -619,6 +618,19 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
   if (!rows) return { days: parsePlan(b.text), reads: [{ text: b.text }], layout: false, rotated: best.q };
 
   const reads = [];
+  // A dinner that doesn't fit wraps onto the line below, beside the next day's printed heading (the strip
+  // starts right of where the heading ends). Measured on private/dataset: lunches have no such line (the
+  // dinner is right below), and the strip above a lunch holds the previous dinner's second line, so
+  // lunches are left alone; their notes are small text squeezed on top of the line itself.
+  async function extraLines(r, right) {
+    if (r.slot !== 'dinner') return [];
+    const cy = r.y + 0.23 * r.gap, ch = 0.1 * r.gap, cx = r.x0 + 0.16 * w;
+    const cbin = traceRow(bin, w, h, cx, right - 4, cy, ch, bin, false);
+    if (cbin.gray.reduce((n, v) => n + (v === 0), 0) / cbin.gray.length <= 0.01) return [];
+    const band = tighten(cbin, traceRow(bin, w, h, cx, right - 4, cy, ch, gray, false), tight || {});
+    if (!band || band.w < 3 * band.h) return []; // a blob or a ruled line, not text
+    return [{ pos: 'below', ...(await readLine(band)) }];
+  }
   for (const r of rows) {
     const half = 0.2 * r.gap;
     // No label seen: the text may start where the label would be (e.g. "ROMA" for the whole day).
@@ -642,19 +654,8 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
       tries.push({ text: text.trim(), conf });
       tick(label);
     }
-    // The strip just under a dinner, where it continues when it doesn't fit: beside the next day's
-    // printed heading, so it starts right of where the heading ends.
-    let cont = null;
-    if (continuation && readLine && tries.length && r.slot === 'dinner') {
-      const cy = r.y + 0.23 * r.gap, ch = 0.1 * r.gap, cx = r.x0 + 0.16 * w;
-      const cbin = traceRow(bin, w, h, cx, right - 4, cy, ch, bin, false);
-      const cInk = cbin.gray.reduce((n, v) => n + (v === 0), 0) / cbin.gray.length;
-      if (cInk > 0.01) {
-        const band = tighten(cbin, traceRow(bin, w, h, cx, right - 4, cy, ch, gray, false), tight || {});
-        if (band) cont = await readLine(band);
-      }
-    }
-    reads.push({ day: r.day, slot: r.slot, found: r.found, ink: +ink.toFixed(4), tries, ...(cont && { cont }) });
+    const extra = continuation && readLine && tries.length ? await extraLines(r, right) : [];
+    reads.push({ day: r.day, slot: r.slot, found: r.found, ink: +ink.toFixed(4), tries, ...(extra.length && { extra }) });
   }
   const days = daysFromReads(reads, dishes, { decode });
   // Meals worth a second look (needs ocr.js's decoder, which knows the vocabulary).
@@ -665,7 +666,7 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
 
 const decodeText = (decode, t, vocab, dishes, k) => decode(t.frames, { vocab, dishes, original: t.text, ...(k && { k }) });
 
-// A second line is kept only when it looks like more of the dish: the reader is sure, it has a known
+// An extra line is kept only when it looks like more of the dish: the reader is sure, it has a known
 // word, it isn't a day heading and it isn't the first line read again. CONT: tuned on private/dataset.
 export const CONT = { conf: 85 };
 function withContinuation(main, c, conf, lm, k = CONT) {
@@ -687,7 +688,7 @@ export function daysFromReads(reads, dishes = [], { k = PICK, decode, dk, cont }
     let text = decode && t?.frames
       ? decodeText(decode, t, vocab, dishes, dk)
       : snapDish(pickDish(r.tries, vocab, k), dishes);
-    if (r.cont && decode?.lm) text = withContinuation(text, decodeText(decode, r.cont, vocab, dishes, dk), r.cont.conf, decode.lm, cont);
+    if (decode?.lm) for (const x of r.extra || []) text = withContinuation(text, decodeText(decode, x, vocab, dishes, dk), x.conf, decode.lm, cont);
     days[r.day][r.slot] = text;
   }
   // A day with no labels and a single line ("ROMA") means the whole day.

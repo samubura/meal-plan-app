@@ -41,6 +41,9 @@ CPU training heats the user's laptop: never run folds in parallel with benches; 
 Shipped: stock PP-OCRv5 + ink-tight crops + context-aware CTC decoding with slash handling; scored
 slash-aware: 118/196 exact first scan, 136/196 with remembered dishes (leave-one-out), ~96% right slot.
 `scanPlan` auto-rotates (0/90/270/180, by labels found). Event titles "Pranzo: …"/"Cena: …".
+Extra lines: only the strip under dinners (beside the next day's heading). Tried and rejected: the same
+strip above lunches (it holds the previous dinner's second line) and per-meal zone segmentation by ink
+profile (close lines merge; finds ruled lines instead). Lunch notes are small text on top of the line.
 Rejected after measuring: fine-tuning on the user's pages (better on repeated dishes, worse on new ones: 134 vs 139),
 Wikibooks cookbook lexicon, full-res photos (no gain), TrOCR, big general dictionary, second-line capture, binary/lum inputs.
 

@@ -114,6 +114,11 @@ test('CTC decoding: model probabilities pick the vocabulary word', async () => {
   // An unknown name with a trailing slash read as "l", keeping the writer's capitals.
   assert.equal(decoderFor([])(F('t_o_s_c_a_n_a_l_ _m_a_m_m_a'), { original: 'Toscanal mamma' }), 'Toscana / mamma');
   assert.equal(decoderFor([])(F('c_o_c_k_t_a_i_l')), 'cocktail');
+  // "+": kept when read, split off a word, a lone "t" between words, a circled plus read as ④.
+  assert.equal(decoderFor([])(F('p_a_s_t_a_ _+_ _b_u_r_g_e_r')), 'pasta + burger');
+  assert.equal(decoderFor([])(F('z_u_c_c_h_i_n_e_+_b_u_r_g_e_r')), 'zucchine + burger');
+  assert.equal(decoderFor([])(F('v_e_r_d_u_r_e_ _t_ _p_a_t_a_t_e')), 'verdure + patate');
+  assert.equal(decoderFor([])(F('s_u_g_o_ _④_ _b_u_r_g_e_r')), 'sugo + burger');
 });
 
 test('Google Calendar event ids: stable and base32hex', async () => {

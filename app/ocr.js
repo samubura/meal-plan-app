@@ -57,7 +57,9 @@ export async function createRecognizer(ort, model, dict, sessionOptions = {}) {
 // accents (their probabilities summed), so candidates are scored case/accent-insensitively.
 // '' is the CTC blank, ' ' the space. Small enough to store in bench dumps.
 
-const fold = (c) => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// Circled or dagger-like plus signs (⊕, ④ is how the reader sees a circled +) count as "+".
+const PLUS_GLYPHS = /[④⊕⨁†±]/g;
+const fold = (c) => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(PLUS_GLYPHS, '+');
 
 export function toFrames(probs, T, C, chars, k = 10) {
   const frames = [];
@@ -74,7 +76,10 @@ export function toFrames(probs, T, C, chars, k = 10) {
 const FLOOR = 1e-5; // probability of a character outside a frame's top-k
 // "/" is often read as l, |, 1, I, [ ...: a slash in a candidate may use any of those readings.
 const SLASHY = ['/', '|', 'l', '1', 'i', '[', ']', '!', '(', ')'];
-const lp = (f, ch) => (ch === '/' ? Math.log(Math.max(FLOOR, SLASHY.reduce((a, c) => a + (f[c] || 0), 0))) : Math.log(f[ch] ?? FLOOR));
+// "+" is often read as a lone t (or ④ when it is circled).
+const PLUSY = ['+', 't', '④', '⊕'];
+const sum = (f, cs) => Math.log(Math.max(FLOOR, cs.reduce((a, c) => a + (f[c] || 0), 0)));
+const lp = (f, ch) => (ch === '/' ? sum(f, SLASHY) : ch === '+' ? sum(f, PLUSY) : Math.log(f[ch] ?? FLOOR));
 const logAdd = (a, b) => (a === -Infinity ? b : b === -Infinity ? a : Math.max(a, b) + Math.log1p(Math.exp(-Math.abs(a - b))));
 
 // log P(text | frames[t0..t1)) under CTC (forward algorithm). text: folded string.
@@ -100,13 +105,13 @@ export function ctcLogP(frames, text, t0 = 0, t1 = frames.length) {
 
 // Best path, with the frame span of each word: [{word, t0, t1}] (spans include surrounding blanks).
 export function greedyWords(frames) {
-  const best = frames.map((f) => Object.entries(f).reduce((a, b) => (b[1] > a[1] ? b : a))[0]);
+  const best = frames.map((f) => Object.entries(f).reduce((a, b) => (b[1] > a[1] ? b : a))[0].replace(PLUS_GLYPHS, '+'));
   const words = [];
   let cur = null, prev = null, lastSpace = -1;
   best.forEach((ch, t) => {
-    if (ch === '/' || ch === '|') { // a slash is a word of its own ("pizza/mamma" = pizza / mamma)
+    if (ch === '/' || ch === '|' || ch === '+') { // separators are words of their own ("pizza/mamma", "zucchine+burger")
       if (cur) { cur.t1 = t; words.push(cur); cur = null; }
-      if (prev !== ch) words.push({ word: '/', t0: t, t1: t + 1 });
+      if (prev !== ch) words.push({ word: ch === '+' ? '+' : '/', t0: t, t1: t + 1 });
       else words.at(-1).t1 = t + 1;
       lastSpace = t; prev = ch;
       return;
@@ -187,11 +192,14 @@ export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' 
   for (const [wi, w] of words.entries()) {
     const raw = w.word, c = core(raw);
     if (raw === '/' || /^[|l1[\]!]$/.test(raw)) { cols.push([{ parts: ['/'], s: 0 }]); continue; }
-    if (raw === '+' || /^x\d$/.test(raw)) { cols.push([{ parts: [{ t: null, text: raw }], s: 0 }]); continue; }
+    if (raw === '+') { cols.push([{ parts: ['+'], s: 0 }]); continue; }
+    if (/^x\d$/.test(raw)) { cols.push([{ parts: [{ t: null, text: raw }], s: 0 }]); continue; }
     if (!c) continue;
     const pre = raw.match(/^[^a-z0-9]*/)[0], post = raw.match(/[^a-z0-9]*$/)[0];
-    const score = (parts) => ctcLogP(frames, pre + parts.map((p) => (p === '/' ? '/' : p.t)).join(' ').replace(/ ?\/ ?/g, '/') + post, w.t0, w.t1);
+    const score = (parts) => ctcLogP(frames, pre + parts.map((p) => (typeof p === 'string' ? p : p.t)).join(' ').replace(/ ?\/ ?/g, '/') + post, w.t0, w.t1);
     const cands = [[word(c)]];
+    // A lone "t" between words is a "+" ("verdure t primo sale").
+    if (c === 't' && wi > 0 && wi < words.length - 1) cands.push(['+']);
     for (const [f] of near(c, V, maxD(c.length))) if (f !== c) cands.push([word(f)]);
     if (c.length >= 5) for (let i = 1; i < c.length; i++) {
       const ls = opts(c.slice(0, i)), rs = ls.length ? opts(c.slice(i)) : [];
@@ -222,7 +230,7 @@ export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' 
   const lmScore = (parts, prev) => {
     let s = 0;
     for (const p of parts) {
-      if (p === '/') { prev = null; continue; }
+      if (p === '/' || p === '+') { prev = null; continue; }
       if (p.t == null) continue;
       s += p.oov ? k.oov : k.lm * lm.logp(p.t, prev);
       prev = p.t;
@@ -234,15 +242,15 @@ export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' 
     const next = [];
     for (const b of beam) for (const c of col) {
       const l = lmScore(c.parts, b.last);
-      next.push({ s: b.s + c.s + l.s, last: l.prev, out: [...b.out, ...c.parts.map((p) => (p === '/' ? '/' : p.text))] });
+      next.push({ s: b.s + c.s + l.s, last: l.prev, out: [...b.out, ...c.parts.map((p) => (typeof p === 'string' ? p : p.text))] });
     }
     next.sort((a, b) => b.s - a.s);
     beam = next.slice(0, 12);
   }
-  const out = (beam[0]?.out || []).map((t) => t.replace(/^[^\p{L}\p{N}(/]+|[^\p{L}\p{N})?/]+$/gu, '')).filter(Boolean);
+  const out = (beam[0]?.out || []).map((t) => (t === '+' ? t : t.replace(/^[^\p{L}\p{N}(/]+|[^\p{L}\p{N})?/]+$/gu, ''))).filter(Boolean);
   while (out.length && (SHORT.has(out.at(-1)) || out.at(-1) === '/' || out.at(-1) === '+')) out.pop();
   while (out.length && (out[0] === '/' || out[0] === '+')) out.shift();
-  let text = out.join(' ').replace(/(\/ )+/g, '/ ').replace(/\s*\/\s*/g, ' / ');
+  let text = out.join(' ').replace(/(\/ )+/g, '/ ').replace(/(\+ )+/g, '+ ').replace(/\s*\/\s*/g, ' / ').replace(/\s*\+\s*/g, ' + ');
   if (dishes.length && text) {
     const ft = ctcText(text), base = ctcLogP(frames, ft);
     let bestD = null;

@@ -85,7 +85,8 @@ only gets the dishes from the *other* pages.
 | + decoding with the model's probabilities | 187 | 122 (62%) | 134 |
 | + word-pair model from your dishes | 190 (97%) | 122 (62%) | 139 (71%) |
 | + slash handling, scored slash-aware | 189 (96%) | 118 (60%) | 136 (69%) |
-| + second line under dinners (shipped) | 189 (96%) | 119 (61%) | **136 (69%)** |
+| + second line under dinners | 189 (96%) | 119 (61%) | 136 (69%) |
+| + "+" kept and inferred, scored with "+" (shipped) | 189 (96%) | 120 (61%) | **138 (70%)** |
 
 The last row uses stricter scoring: "pizza mamma" no longer counts as "pizza / mamma". Dishes written
 with a "/" went from 0/24 exact to 7/24 (11/24 with remembered dishes). Turned photos give the same
