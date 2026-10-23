@@ -25,7 +25,7 @@ The first scan downloads the reader once (the 8 MB model, its runtime and Tesser
    Google account and your partner's.
 4. *APIs & Services › Credentials › Create credentials › OAuth client ID*: type **Web application**,
    authorized JavaScript origin `https://<your-user>.github.io`.
-5. Put the client ID in `app/gcal.js` (`export const CLIENT_ID = '…'`) and push. The client ID is
+5. Put the client ID in `app/gcal.js` (`export const CLIENT_ID = '…'`; already done for this repo) and push. The client ID is
    public by design; nothing secret is stored.
 
 Google shows an "unverified app" warning the first time (it's your own app: *Advanced › Continue*).

@@ -1,6 +1,6 @@
 // Google Calendar sync straight from the browser: Google Identity Services token model, no backend.
 // Setup (free, once): see README "Google Calendar". The client ID is public by design.
-export const CLIENT_ID = '';
+export const CLIENT_ID = '288233095312-uvg6tehfuacqp27i60959193a0f2jorh.apps.googleusercontent.com';
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 const API = 'https://www.googleapis.com/calendar/v3';

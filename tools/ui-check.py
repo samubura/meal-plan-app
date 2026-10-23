@@ -1,7 +1,7 @@
 """Headless UI check at phone size: serves app/, scans a dataset photo, exports the .ics and syncs
 to a mocked Google Calendar.
 Usage: python3 tools/ui-check.py OUT_DIR [photo]   (needs `pip install playwright && playwright install chromium`)"""
-import http.server, pathlib, sys, threading, time, functools
+import http.server, pathlib, re, sys, threading, time, functools
 from playwright.sync_api import sync_playwright
 
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -25,7 +25,7 @@ with sync_playwright() as p:
         page.on('console', lambda m: m.type == 'error' and errors.append(m.text))
         # Pretend a client ID is configured and Google sign-in grants a token at once.
         page.route('**/gcal.js', lambda r: r.fulfill(content_type='text/javascript',
-            body=(root / 'app' / 'gcal.js').read_text().replace("export const CLIENT_ID = '';", "export const CLIENT_ID = 'test';")))
+            body=re.sub(r"export const CLIENT_ID = '[^']*';", "export const CLIENT_ID = 'test';", (root / 'app' / 'gcal.js').read_text())))
         page.route('https://accounts.google.com/gsi/client', lambda r: r.fulfill(content_type='text/javascript', body=
             "window.google={accounts:{oauth2:{initTokenClient:(o)=>({requestAccessToken:()=>setTimeout(()=>o.callback({access_token:'t',expires_in:3600}),10)})}}};"))
         page.goto(url)
