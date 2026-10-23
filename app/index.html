@@ -31,7 +31,8 @@
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html { -webkit-text-size-adjust: 100%; }
+  /* No browser pull-to-refresh: dragging down closes sheets instead (updates come with "Aggiorna"). */
+  html, body { -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
   body {
     margin: 0; min-height: 100dvh; background: var(--bg); color: var(--text);
     font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -97,7 +98,9 @@
   input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
   /* home: the plan */
-  .day { margin: 10px 0 0; }
+  .day { margin: 10px 0 0; scroll-margin-top: 76px; }
+  .day.flash-day .meals { animation: dayflash 1.2s ease; }
+  @keyframes dayflash { 0%, 40% { box-shadow: 0 0 0 4px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
   .day h2 { display: flex; align-items: center; gap: 8px; font-size: .92rem; margin: 0 0 5px 4px; font-weight: 700; }
   .day h2 .date { color: var(--muted); font-weight: 600; }
   .chip-today { font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
@@ -149,6 +152,8 @@
   .hero .art svg { width: 52px; height: 52px; }
   .hero h2 { margin: 0 0 6px; font-size: 1.3rem; }
   .hero p { margin: 0 auto 24px; max-width: 30ch; color: var(--muted); }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  .stack .btn { margin: 0; }
   .tips { margin: 22px 4px 0; padding: 0; list-style: none; color: var(--muted); font-size: .9rem; }
   .tips li { display: flex; gap: 10px; margin: 8px 0; }
   .tips svg { width: 18px; height: 18px; color: var(--accent); margin-top: 2px; }
@@ -191,6 +196,8 @@
     transform: translateY(100%); transition: transform .22s ease-out; box-shadow: var(--shadow-lift);
   }
   .sheet.open { transform: none; }
+  .sheet { overscroll-behavior: contain; touch-action: pan-y; }
+  .sheet.dragging { transition: none; }
   .sheet .grip { width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: 6px auto 14px; }
   .sheet h2 { font-size: 1.15rem; margin: 0 0 14px; }
   .sheet h3 { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 22px 0 10px; }
@@ -246,6 +253,7 @@
   <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="4"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v18M12 8h4M12 12h4M12 16h3"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
   <symbol id="i-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></symbol>
 </svg>
 
@@ -282,12 +290,14 @@
       <div class="art"><svg><use href="#i-cam"/></svg></div>
       <h2>Fotografa la pagina</h2>
       <p>Tutta la pagina, dritta e con buona luce. La foto resta sul telefono.</p>
-      <button class="btn primary" id="takePhoto" type="button"><svg><use href="#i-cam"/></svg>Scatta una foto</button>
+      <div class="stack">
+        <button class="btn primary" id="takePhoto" type="button"><svg><use href="#i-cam"/></svg>Scatta una foto</button>
+        <label class="btn" for="gallery"><svg><use href="#i-image"/></svg>Scegli dalla galleria</label>
+        <button class="btn" id="manual" type="button"><svg><use href="#i-pen"/></svg>Scrivi a mano</button>
+      </div>
       <input id="camera" type="file" accept="image/*" capture="environment">
-      <label class="btn" for="gallery"><svg><use href="#i-image"/></svg>Scegli dalla galleria</label>
       <input id="gallery" type="file" accept="image/*">
       <label id="geminiRow" class="switch" hidden><input type="checkbox" id="useGemini"><span><b>Leggi con Gemini</b><small>Più preciso. La foto viene inviata a Google.</small></span></label>
-      <p style="margin:16px 0 0">oppure <button type="button" id="manual" class="linklike">scrivi la settimana a mano</button></p>
     </div>
     <ul class="tips">
       <li><svg><use href="#i-bulb"/></svg>In cucina con poca luce accendi la torcia dalla fotocamera.</li>
@@ -513,6 +523,7 @@ function openSheet(id) {
   sheet = id;
   history.pushState({ screen: history.state?.screen || 'home', sheet: id }, '');
   $('scrim').hidden = false; $(id).hidden = false;
+  $(id).scrollTop = 0; // always opens from the top
   requestAnimationFrame(() => { $('scrim').classList.add('open'); $(id).classList.add('open'); });
 }
 function closeSheet(silent = false) {
@@ -530,6 +541,25 @@ window.addEventListener('popstate', (e) => {
   showScreen(id === 'working' ? (plan ? 'home' : 'scan') : id);
 });
 $('scrim').addEventListener('click', () => closeSheet());
+// Drag a sheet down to close it (when its own content is scrolled to the top).
+for (const el of document.querySelectorAll('.sheet')) {
+  let y0 = null, dy = 0;
+  el.addEventListener('touchstart', (e) => { y0 = el.scrollTop <= 0 ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+  el.addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0) { el.style.transform = ''; el.classList.remove('dragging'); return; }
+    e.preventDefault(); // the sheet follows the finger, no scroll / refresh
+    el.classList.add('dragging');
+    el.style.transform = `translateY(${dy}px)`;
+  }, { passive: false });
+  el.addEventListener('touchend', () => {
+    if (y0 == null) return;
+    el.classList.remove('dragging'); el.style.transform = '';
+    if (dy > Math.min(140, el.offsetHeight / 4)) closeSheet();
+    y0 = null;
+  });
+}
 document.addEventListener('click', (e) => {
   const g = e.target.closest('[data-go]');
   if (g) go(g.dataset.go);
@@ -571,7 +601,7 @@ function renderPlan() {
   renderToday();
   const today = iso(new Date()), t = times();
   $('plan').innerHTML = plan.days.map((d, di) => `
-    <section class="day${iso(dateOf(plan.weekStart, di)) === today ? ' is-today' : ''}" aria-label="${DAY_LABELS[di]}">
+    <section class="day${iso(dateOf(plan.weekStart, di)) === today ? ' is-today' : ''}" data-day="${di}" aria-label="${DAY_LABELS[di]}">
       <h2>${DAY_LABELS[di]} <span class="date">${shortDate(dateOf(plan.weekStart, di))}</span>${iso(dateOf(plan.weekStart, di)) === today ? '<span class="chip-today">oggi</span>' : ''}</h2>
       <div class="meals">${SLOTS.map((slot, si) => {
         const i = di * 2 + si, text = d[slot].text;
@@ -598,16 +628,18 @@ function renderToday() {
   if (dayIdx >= 0 && dayIdx <= 6 && !next) { di = dayIdx + 1; label = 'Domani'; next = 'lunch'; }
   if (dayIdx < 0) { di = 0; label = 'Si comincia'; next = 'lunch'; }
   if (di > 6) {
+    delete $('todayCard').dataset.day;
     $('todayCard').innerHTML = `<div class="head"><b>Settimana finita</b></div>
       <p style="margin:0 2px 10px">Fotografa la pagina della prossima settimana.</p>
       <button class="btn primary cta" type="button" data-go="scan"><svg><use href="#i-cam"/></svg>Nuova settimana</button>`;
     return;
   }
   const d = dateOf(plan.weekStart, di);
+  $('todayCard').dataset.day = di;
   $('todayCard').innerHTML = `<div class="head"><b>${label}</b><span>${DAY_LABELS[di]} ${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</span></div>` +
     SLOTS.map((slot, si) => {
       const text = plan.days[di][slot].text, past = label === 'Oggi' && next === 'dinner' && slot === 'lunch';
-      return `<button class="today-meal${past ? ' past' : ''}" type="button" data-edit="${di * 2 + si}" aria-label="${SLOT_LABELS[slot]}: ${esc(text || 'nessun pasto')}. Modifica">
+      return `<button class="today-meal${past ? ' past' : ''}" type="button" aria-label="${SLOT_LABELS[slot]}: ${esc(text || 'nessun pasto')}. Mostra nella settimana">
         <span class="when">${SLOT_LABELS[slot]}<span><svg><use href="#i-${slot === 'lunch' ? 'sun' : 'moon'}"/></svg>${slot === 'lunch' ? t.lunchTime : t.dinnerTime}</span></span>
         <span class="what${text ? '' : ' empty'}">${text ? esc(text) : 'Nessun pasto'}</span>${slot === next ? `<span class="next">${label === 'Oggi' && mins >= at(slot === 'lunch' ? t.lunchTime : t.dinnerTime) ? 'Adesso' : 'Prossimo'}</span>` : ''}
       </button>`;
@@ -652,7 +684,14 @@ function openEdit(e) {
   setTimeout(() => $('editText').focus(), 250);
 }
 $('plan').addEventListener('click', openEdit);
-$('todayCard').addEventListener('click', openEdit);
+// The today card leads to that day in the week list.
+$('todayCard').addEventListener('click', (e) => {
+  if (e.target.closest('[data-go]')) return;
+  const di = +($('todayCard').dataset.day ?? -1), day = document.querySelector(`.day[data-day="${di}"]`);
+  if (!day) return;
+  day.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  day.classList.remove('flash-day'); void day.offsetWidth; day.classList.add('flash-day');
+});
 function saveEdit(text) {
   const offer = undoable();
   const m = meal(editing), t = text.trim(), changed = t !== m.text;

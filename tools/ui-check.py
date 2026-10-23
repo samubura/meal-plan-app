@@ -59,6 +59,8 @@ with sync_playwright() as p:
     page.goto(url)
     page.wait_for_selector('#scan:not([hidden])')
     page.screenshot(path=out / '1-scan.png')
+    bx = [page.locator(sel).bounding_box() for sel in ('#takePhoto', 'label[for=gallery]', '#manual')]
+    assert all(bx[i + 1]['y'] - (bx[i]['y'] + bx[i]['height']) >= 10 for i in range(2)), bx  # spaced, not touching
     page.click('#takePhoto'); page.wait_for_selector('#cam:not([hidden])'); page.wait_for_timeout(600)
     page.screenshot(path=out / '2-camera.png')
     page.click('#camClose'); assert page.is_hidden('#cam')
@@ -93,6 +95,11 @@ with sync_playwright() as p:
     page.screenshot(path=out / '6-plan.png', full_page=True)
     assert page.is_visible('#todayCard') and page.locator('#todayCard .next').count() == 1, 'today card with the next meal'
     print('today card:', page.text_content('#todayCard .head').strip())
+    page.click('#todayCard .today-meal'); page.wait_for_timeout(700)
+    di = page.get_attribute('#todayCard', 'data-day')
+    top = page.evaluate(f'document.querySelector(".day[data-day=\\"{di}\\"]").getBoundingClientRect().top')
+    assert 0 <= top < 200, top  # scrolled to that day
+    page.evaluate('window.scrollTo(0, 0)')
     posts = [json.loads(c[2]) for c in calls if c[0] == 'POST' and c[2]]
     assert all(re.fullmatch(r'meal2026\d{4}[ld]', x['id']) and x['summary'].startswith(('Pranzo: ', 'Cena: ')) and x['start']['timeZone'] for x in posts)
     assert all(x['reminders'] == {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': 30}]} for x in posts), 'reminder 30 min before'
@@ -164,6 +171,17 @@ with sync_playwright() as p:
     page.screenshot(path=out / '9-settings.png')
     page.go_back(); page.wait_for_timeout(300)
     assert not page.is_visible('#settingsSheet') and page.is_visible('#home')
+    # Dragging the sheet down closes it (finger simulated with touch events).
+    page.click('#menuBtn'); page.wait_for_selector('#settingsSheet.open'); page.wait_for_timeout(300)
+    page.evaluate('''() => { const el = document.querySelector('#settingsSheet');
+      const t = (y) => new Touch({ identifier: 1, target: el, clientX: 200, clientY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { touches: [t(300)], bubbles: true }));
+      for (const y of [340, 420, 520]) el.dispatchEvent(new TouchEvent('touchmove', { touches: [t(y)], bubbles: true, cancelable: true }));
+      el.dispatchEvent(new TouchEvent('touchend', { touches: [], bubbles: true })); }''')
+    page.wait_for_timeout(400)
+    assert not page.is_visible('#settingsSheet') and page.is_visible('#home'), 'drag down closes the sheet'
+    assert page.evaluate('getComputedStyle(document.documentElement).overscrollBehaviorY') == 'none', 'no pull-to-refresh'
+    print('sheet drag-to-close: ok')
 
     # 8. Reload: the plan is still there.
     page.reload(); page.wait_for_selector('#home:not([hidden])')
