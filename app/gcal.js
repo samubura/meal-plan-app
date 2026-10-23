@@ -5,7 +5,10 @@ export const CLIENT_ID = '288233095312-uvg6tehfuacqp27i60959193a0f2jorh.apps.goo
 const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 const API = 'https://www.googleapis.com/calendar/v3';
 
-let gis, token = null;
+let gis;
+// The access token lasts an hour; kept across app restarts so Google isn't asked again each time.
+let token = (() => { try { const t = JSON.parse(localStorage.getItem('mealplan.gtoken')); return t?.expires > Date.now() ? t : null; } catch { return null; } })();
+const keepToken = (t) => { token = t; try { localStorage.setItem('mealplan.gtoken', JSON.stringify(t)); } catch {} };
 // Google doesn't version this script, so it can't be pinned like the others.
 export const loadGis = () => (gis ??= new Promise((resolve, reject) => {
   const s = Object.assign(document.createElement('script'), { src: 'https://accounts.google.com/gsi/client', async: true });
@@ -23,11 +26,11 @@ export async function signIn() {
       client_id: CLIENT_ID,
       scope: SCOPES,
       callback: (r) => {
-        if (r.error) return reject(new Error(r.error_description || r.error));
-        token = { value: r.access_token, expires: Date.now() + r.expires_in * 1000 };
+        if (r.error) return reject(new Error(`Accesso a Google non riuscito: ${r.error_description || r.error}`));
+        keepToken({ value: r.access_token, expires: Date.now() + r.expires_in * 1000 });
         resolve(token.value);
       },
-      error_callback: (e) => reject(new Error(e.type === 'popup_closed' ? 'Hai chiuso l’accesso a Google.' : e.message || e.type)),
+      error_callback: (e) => reject(new Error(e.type === 'popup_closed' ? 'Hai chiuso l’accesso a Google.' : e.type === 'popup_failed_to_open' ? 'Il popup di accesso a Google è stato bloccato.' : `Accesso a Google non riuscito: ${e.message || e.type}`)),
     }).requestAccessToken({ prompt: '' });
   });
 }
@@ -54,6 +57,7 @@ async function api(path, { method = 'GET', body } = {}) {
       body: body && JSON.stringify(body),
     });
     if (res.ok) return res.status === 204 ? null : res.json();
+    if (res.status === 401) { keepToken(null); throw Object.assign(new Error('L’accesso a Google è scaduto: tocca di nuovo Sincronizza.'), { status: 401 }); }
     const e = apiError(res.status, await res.json().catch(() => null));
     if (!retryable(e) || attempt >= 4) throw e;
     await sleep(1000 * 2 ** attempt + Math.random() * 300);

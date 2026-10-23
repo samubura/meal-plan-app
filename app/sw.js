@@ -1,6 +1,6 @@
 // App shell network-first (new deploys show up, cache when offline); CDN files (tesseract.js, its wasm core, fonts) stale-while-revalidate.
 // Tesseract keeps the language data in IndexedDB itself, so after one scan it works offline.
-const SHELL = 'shell-v13', CDN = 'cdn-v1';
+const SHELL = 'shell-v14', CDN = 'cdn-v1';
 const FILES = ['./', 'index.html', 'lib.js', 'ocr.js', 'gcal.js', 'gemini.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 const MODELS = 'models-v1'; // models/ is cache-first: 8 MB, changes only with a new file name or MODELS bump
 
@@ -16,7 +16,9 @@ self.addEventListener('fetch', (e) => {
   if (url.origin === location.origin && url.pathname.includes('/models/')) {
     e.respondWith(caches.open(MODELS).then(async (c) => (await c.match(req)) || fetch(req).then((res) => { if (res.ok) c.put(req, res.clone()); return res; })));
   } else if (url.origin === location.origin) {
-    e.respondWith(fetch(req).then((res) => {
+    // no-cache: ask the server every time (a cheap 304 when unchanged); Pages' 10-minute HTTP cache
+    // would otherwise keep an old file after an update.
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(SHELL).then((c) => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true })));

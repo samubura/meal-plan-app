@@ -336,6 +336,7 @@
   <h3>Altro</h3>
   <button class="btn" id="saveIcs" type="button">Scarica il file .ics</button>
   <details style="margin-top:12px"><summary>Cosa ha letto la scansione</summary><pre id="raw"></pre></details>
+  <p class="muted" style="margin:14px 0 0;font-size:.8rem">Versione <span id="appVersion">dev</span></p>
 </section>
 
 <!-- Scelta calendario -->
@@ -377,6 +378,7 @@ import { readPlanWithGemini } from './gemini.js';
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
 ort.env.wasm.numThreads = 1;
 const MODEL = 'models/latin_PP-OCRv5_mobile_rec';
+const VERSION = '__VERSION__'; // stamped with the commit by the Pages workflow
 
 const $ = (id) => document.getElementById(id);
 const SUG = $('suggest'); // suggestion chips, moved under the field being typed in
@@ -405,6 +407,7 @@ function rememberDishes(list) {
   store.set('dishes', out.slice(0, 400));
 }
 rememberDishes([]);
+$('appVersion').textContent = VERSION.startsWith('__') ? 'dev' : VERSION;
 
 // ---- dish fields: grow with the text; remembered dishes as suggestion chips ----
 // field-sizing: content does it natively where supported; this is the fallback.

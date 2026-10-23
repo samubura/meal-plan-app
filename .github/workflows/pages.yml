@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: 24
       - run: npm test  # tests need no dependencies
+      - run: sed -i "s/__VERSION__/${GITHUB_SHA::7}/" app/index.html  # version shown in the settings
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
