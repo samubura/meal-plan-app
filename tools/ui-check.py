@@ -22,6 +22,8 @@ def gapi(route):
     if r.method == 'PUT' and limited['left']:
         limited['left'] -= 1
         return route.fulfill(status=403, json={'error': {'errors': [{'reason': 'rateLimitExceeded'}], 'message': 'Rate Limit Exceeded'}})
+    if r.url.endswith('/calendarList/primary'):
+        return route.fulfill(json={'id': 'me@x', 'summary': 'Me', 'primary': True})
     if 'calendarList' in r.url:
         return route.fulfill(json={'items': [{'id': 'me@x', 'summary': 'Me', 'primary': True}, {'id': 'family@group', 'summary': 'Family'}]})
     if r.method == 'POST' and r.url.endswith('/events') and '"id":"meal20261026l"' in (r.post_data or ''):
@@ -140,12 +142,13 @@ with sync_playwright() as p:
     assert limited['left'] == 0 and sum(c[0] == 'PUT' and c[1].endswith('/meal20261026l') for c in calls[:n]) == 2, 'the 403 rate limit was retried'
     print('re-sync requests:', len(resync), '(one update per meal); 403 rate limit retried: ok')
     assert sent['meal20261026l'] == f'Pranzo: {d}' and sent['meal20261027d'] == f'Cena: {a}' and sent['meal20261026d'] == 'Cena: pesce e patate', sent
-    assert not any('calendarList' in c[1] for c in calls[n:]), 'the chosen calendar is remembered'
+    assert not any('calendarList' in c[1] for c in calls[n:]), 'the chosen calendar and account are remembered'
     print('re-sync: ok')
 
     # 7. Settings sheet, closed by the back button.
     page.click('#menuBtn'); page.wait_for_selector('#settingsSheet.open')
     assert page.text_content('#calName') == 'Family'
+    assert page.text_content('#gAccount') == 'Account: me@x'  # remembered, passed to Google as a hint
     page.screenshot(path=out / '9-settings.png')
     page.go_back(); page.wait_for_timeout(300)
     assert not page.is_visible('#settingsSheet') and page.is_visible('#home')

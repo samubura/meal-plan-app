@@ -327,6 +327,7 @@
   </div>
   <h3>Google Calendar</h3>
   <div class="row-between"><span id="calName" class="muted">Nessun calendario scelto</span><button class="btn tonal" id="changeCal" type="button" style="width:auto;min-height:44px">Cambia</button></div>
+  <div class="row-between"><span id="gAccount" class="muted" style="overflow-wrap:anywhere"></span><button class="btn text" id="otherAccount" type="button" style="width:auto;min-height:44px">Usa un altro account</button></div>
   <h3>Lettura con Gemini (facoltativa)</h3>
   <p class="muted" style="margin:0 0 10px;font-size:.9rem">Con una chiave gratuita di Google AI Studio la foto viene letta da Gemini, molto più preciso.
     La foto viene inviata a Google. Se Gemini non risponde (limite, rete, servizio cambiato) l’app usa da sola la lettura sul telefono.</p>
@@ -371,7 +372,7 @@ import Tesseract from 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tess
 import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs';
 import { scanPlan, buildICS, DAY_KEYS } from './lib.js';
 import { createRecognizer, decoderFor, unsure } from './ocr.js';
-import { CLIENT_ID, loadGis, signIn, calendars, syncWeek } from './gcal.js';
+import { CLIENT_ID, loadGis, signIn, calendars, syncWeek, googleAccount, forgetGoogle } from './gcal.js';
 import { readPlanWithGemini } from './gemini.js';
 
 // Single-threaded WASM: GitHub Pages can't send the headers threads need, and it's gentle on memory.
@@ -663,6 +664,7 @@ $('plan').addEventListener('pointercancel', endDrag);
 // ---- settings sheet ----
 $('menuBtn').addEventListener('click', () => {
   $('calName').textContent = store.get('calendarName') || (store.get('calendar') ? 'Calendario scelto' : 'Nessun calendario scelto');
+  $('gAccount').textContent = googleAccount() ? `Account: ${googleAccount()}` : 'Account Google non ancora scelto';
   openSheet('settingsSheet');
 });
 $('planWeekStart').addEventListener('change', () => {
@@ -672,6 +674,11 @@ $('planWeekStart').addEventListener('change', () => {
 $('geminiKey').value = store.get('geminiKey') || '';
 $('geminiKey').addEventListener('change', () => { store.set('geminiKey', $('geminiKey').value.trim() || null); snack($('geminiKey').value.trim() ? 'Le prossime foto saranno lette con Gemini.' : 'Gemini disattivato.'); });
 $('geminiClear').addEventListener('click', () => { $('geminiKey').value = ''; store.set('geminiKey', null); snack('Chiave rimossa: le foto si leggono sul telefono.'); });
+$('otherAccount').addEventListener('click', () => {
+  forgetGoogle(); store.set('calendar', null); store.set('calendarName', null);
+  $('gAccount').textContent = 'Account Google non ancora scelto'; $('calName').textContent = 'Nessun calendario scelto';
+  snack('Al prossimo sync scegli l’account e il calendario.');
+});
 $('changeCal').addEventListener('click', () => {
   store.set('calendar', null); store.set('calendarName', null);
   $('calName').textContent = 'Nessun calendario scelto';

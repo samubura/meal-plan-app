@@ -9,6 +9,13 @@ let gis;
 // The access token lasts an hour; kept across app restarts so Google isn't asked again each time.
 let token = (() => { try { const t = JSON.parse(localStorage.getItem('mealplan.gtoken')); return t?.expires > Date.now() ? t : null; } catch { return null; } })();
 const keepToken = (t) => { token = t; try { localStorage.setItem('mealplan.gtoken', JSON.stringify(t)); } catch {} };
+// The Google account used before (the id of its primary calendar is its address): passed as a hint,
+// so Google doesn't show the account chooser every time on a phone with several accounts.
+const account = { get: () => { try { return localStorage.getItem('mealplan.gaccount') || ''; } catch { return ''; } },
+  set: (v) => { try { if (v) localStorage.setItem('mealplan.gaccount', v); else localStorage.removeItem('mealplan.gaccount'); } catch {} } };
+export const googleAccount = () => account.get();
+// "Use another account": forget the account and the token.
+export function forgetGoogle() { account.set(''); keepToken(null); }
 // Google doesn't version this script, so it can't be pinned like the others.
 export const loadGis = () => (gis ??= new Promise((resolve, reject) => {
   const s = Object.assign(document.createElement('script'), { src: 'https://accounts.google.com/gsi/client', async: true });
@@ -25,6 +32,7 @@ export async function signIn() {
     globalThis.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
+      ...(account.get() && { hint: account.get() }),
       callback: (r) => {
         if (r.error) return reject(new Error(`Accesso a Google non riuscito: ${r.error_description || r.error}`));
         keepToken({ value: r.access_token, expires: Date.now() + r.expires_in * 1000 });
@@ -68,6 +76,7 @@ async function api(path, { method = 'GET', body } = {}) {
 // Google creates for a family group, shared by its members), then other shared ones, then the personal one.
 export async function calendars() {
   const r = await api('/users/me/calendarList?minAccessRole=writer');
+  account.set(r.items.find((c) => c.primary)?.id || account.get());
   const rank = (c) => (/famil/i.test(c.summary) ? 0 : c.primary ? 2 : 1);
   return r.items.map(({ id, summary, summaryOverride, primary }) => ({ id, summary: summaryOverride || summary, primary: !!primary }))
     .sort((a, b) => rank(a) - rank(b));
@@ -84,6 +93,7 @@ export const eventId = (d, slot) => `meal${d.getFullYear()}${pad(d.getMonth() + 
 // and only those are deleted when a meal is emptied; if the week start changed, the old week's events go.
 // Returns {saved, removed}.
 export async function syncWeek(calendarId, days, weekStart, opts, previous = null) {
+  if (!account.get()) account.set((await api('/users/me/calendarList/primary').catch(() => null))?.id || '');
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const cal = `/calendars/${encodeURIComponent(calendarId)}/events`;
   const slots = (ws, ds) => ds.flatMap((day, i) => [['lunch', 'Pranzo', opts.lunchTime, opts.lunchMin], ['dinner', 'Cena', opts.dinnerTime, opts.dinnerMin]]
