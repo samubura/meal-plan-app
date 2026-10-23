@@ -584,7 +584,8 @@ const ROW_VARIANTS = [['gray', 0.6], ['gray', 0.8], ['bin', 0.6], ['bin', 0.8]];
 // (bench: max-channel gray beats binary and luminance); tight: options for tighten().
 // onBand(row, img): debug hook, gets every line image that is read.
 // decode: ocr.js decoderFor(dishes) (context-aware decoding of readLine's frames).
-export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress = () => {}, readLine, decode, lineVariants = ['gray'], onBand, tight = {} } = {}) {
+// isUnsure: ocr.js unsure (flags meals to double-check).
+export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress = () => {}, readLine, decode, isUnsure, lineVariants = ['gray'], onBand, tight = {} } = {}) {
   const variants = readLine ? lineVariants : ROW_VARIANTS;
   let total = 2 + 14 * variants.length, done = 0;
   const tick = (msg, n = 1) => onProgress(Math.min(1, (done += n) / total), msg);
@@ -615,7 +616,6 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
   const rows = findLayout([...a.words, ...b.words], w);
   if (!rows) return { days: parsePlan(b.text), reads: [{ text: b.text }], layout: false, rotated: best.q };
 
-  const days = DAY_KEYS.map(() => ({ lunch: '', dinner: '' }));
   const reads = [];
   for (const r of rows) {
     const half = 0.2 * r.gap;
@@ -642,7 +642,11 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
     }
     reads.push({ day: r.day, slot: r.slot, found: r.found, ink: +ink.toFixed(4), tries });
   }
-  return { days: daysFromReads(reads, dishes, { decode }), reads, layout: true, rotated: best.q };
+  const days = daysFromReads(reads, dishes, { decode });
+  // Meals worth a second look (needs ocr.js's decoder, which knows the vocabulary).
+  const unsureMeals = DAY_KEYS.map(() => ({ lunch: false, dinner: false }));
+  if (decode?.lm && isUnsure) for (const r of reads) unsureMeals[r.day][r.slot] = isUnsure(r, days[r.day][r.slot], decode.lm);
+  return { days, unsure: unsureMeals, reads, layout: true, rotated: best.q };
 }
 
 const decodeText = (decode, t, vocab, dishes, k) => decode(t.frames, { vocab, dishes, original: t.text, ...(k && { k }) });

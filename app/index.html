@@ -148,6 +148,11 @@
   .suggest { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
   .suggest button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 16px; min-height: 36px; padding: 4px 12px; font-size: .9rem; cursor: pointer; text-align: left; }
   .rmeal .suggest { grid-column: 2; margin-top: 0; }
+  textarea.dish.unsure { border-color: #d39b00; background: #fff7dc; }
+  @media (prefers-color-scheme: dark) { textarea.dish.unsure { border-color: #c99a2e; background: #342a12; } }
+  .snack { display: flex; align-items: center; gap: 12px; }
+  .snack span { flex: 1; }
+  .snack button { border: 0; background: none; color: #9fe0b5; font-weight: 700; padding: 6px 4px; cursor: pointer; pointer-events: auto; min-height: 36px; }
   .field input:focus, .field select:focus, .dish:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
   .rday { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 10px 8px; margin: 8px 0; }
   .rday h2 { font-size: .92rem; margin: 0 0 4px 2px; }
@@ -364,7 +369,7 @@
 import Tesseract from 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js';
 import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs';
 import { scanPlan, buildICS, DAY_KEYS } from './lib.js';
-import { createRecognizer, decoderFor } from './ocr.js';
+import { createRecognizer, decoderFor, unsure } from './ocr.js';
 import { CLIENT_ID, loadGis, signIn, calendars, syncWeek } from './gcal.js';
 import { readPlanWithGemini } from './gemini.js';
 
@@ -498,12 +503,24 @@ document.addEventListener('click', (e) => {
 window.addEventListener('scroll', () => document.querySelectorAll('.appbar').forEach((a) => a.classList.toggle('scrolled', scrollY > 4)), { passive: true });
 
 let snackTimer;
-function snack(text, error = false) {
-  $('snack').textContent = text;
-  $('snack').classList.toggle('error', error);
-  $('snack').classList.add('show');
+// action: {label, run} adds a button (e.g. "Annulla"); the message then stays a little longer.
+function snack(text, error = false, action = null) {
+  const el = $('snack');
+  el.replaceChildren(Object.assign(document.createElement('span'), { textContent: text }));
+  if (action) {
+    const b = Object.assign(document.createElement('button'), { type: 'button', textContent: action.label });
+    b.onclick = () => { el.classList.remove('show'); action.run(); };
+    el.append(b);
+  }
+  el.classList.toggle('error', error);
+  el.classList.add('show');
   clearTimeout(snackTimer);
-  snackTimer = setTimeout(() => $('snack').classList.remove('show'), error ? 6000 : 3500);
+  snackTimer = setTimeout(() => el.classList.remove('show'), error ? 6000 : action ? 6000 : 3500);
+}
+// Undo for the plan: call before a change, then offer() after it.
+function undoable() {
+  const before = JSON.stringify(plan);
+  return (text) => snack(text, false, { label: 'Annulla', run: () => { plan = JSON.parse(before); savePlan(); renderPlan(); } });
 }
 
 // ---- home: the plan ----
@@ -545,13 +562,14 @@ function renderSync() {
 function flash(...idx) {
   for (const i of idx) document.querySelector(`.meal[data-i="${i}"]`)?.classList.add('flash');
 }
-function swapMeals(a, b) {
+function swapMeals(a, b, offer = undoable()) {
   if (a === b) return;
   const A = meal(a), B = meal(b);
   plan.days[a >> 1][SLOTS[a & 1]] = B;
   plan.days[b >> 1][SLOTS[b & 1]] = A;
   savePlan(); renderPlan(); flash(a, b);
   navigator.vibrate?.(15);
+  offer(`Scambiati ${slotName(a).toLowerCase()} e ${slotName(b).toLowerCase()}.`);
 }
 
 // Edit sheet
@@ -570,12 +588,14 @@ $('plan').addEventListener('click', (e) => {
   setTimeout(() => $('editText').focus(), 250);
 });
 function saveEdit(text) {
-  const m = meal(editing), t = text.trim();
-  if (t !== m.text) { m.text = t; m.edited = true; if (t) rememberDishes([t]); }
+  const offer = undoable();
+  const m = meal(editing), t = text.trim(), changed = t !== m.text;
+  if (changed) { m.text = t; m.edited = true; if (t) rememberDishes([t]); }
   const to = +$('editMove').value;
   savePlan();
   closeSheet();
-  if (to !== editing) swapMeals(editing, to); else { renderPlan(); flash(editing); }
+  if (to !== editing) swapMeals(editing, to, offer);
+  else { renderPlan(); flash(editing); if (changed) offer(t ? 'Pasto modificato.' : 'Pasto svuotato.'); }
 }
 $('editSave').addEventListener('click', () => saveEdit($('editText').value));
 $('editClear').addEventListener('click', () => saveEdit(''));
@@ -708,7 +728,7 @@ if (CLIENT_ID) loadGis().catch(() => {}); // ready before the tap, so the sign-i
 
 // ---- review (after a scan, or typing by hand) ----
 let draft = null; // {days: [{lunch, dinner}], raw}
-function openReview(days, raw, note) {
+function openReview(days, raw, note, unsureMeals = null) {
   draft = { raw };
   document.body.append(SUG); SUG.hidden = true; // out of the way of the re-render
   $('weekStart').value = nextMonday();
@@ -716,8 +736,8 @@ function openReview(days, raw, note) {
   $('reviewDays').innerHTML = days.map((d, i) => `
     <div class="rday"><h2>${DAY_LABELS[i]}</h2>${SLOTS.map((s) => `
       <div class="rmeal"><label for="r-${DAY_KEYS[i]}-${s}">${SLOT_LABELS[s]}</label>
-      <textarea class="dish" id="r-${DAY_KEYS[i]}-${s}" rows="1" autocomplete="off" autocapitalize="sentences" enterkeyhint="next">${esc(d[s])}</textarea></div>`).join('')}</div>`).join('');
-  document.querySelectorAll('#reviewDays .dish').forEach((el) => { el.addEventListener('input', () => { el.dataset.edited = '1'; }, { once: true }); autosize(el); });
+      <textarea class="dish${unsureMeals?.[i]?.[s] ? ' unsure' : ''}" id="r-${DAY_KEYS[i]}-${s}" rows="1" autocomplete="off" autocapitalize="sentences" enterkeyhint="next"${unsureMeals?.[i]?.[s] ? ' aria-description="da controllare"' : ''}>${esc(d[s])}</textarea></div>`).join('')}</div>`).join('');
+  document.querySelectorAll('#reviewDays .dish').forEach((el) => { el.addEventListener('input', () => { el.dataset.edited = '1'; el.classList.remove('unsure'); }, { once: true }); autosize(el); });
   go('review', history.state?.screen === 'working'); // the review takes the place of the progress screen
 }
 async function saveReview(sync) {
@@ -812,15 +832,17 @@ async function scan(file) {
       dishes: dishes(),
       readLine: (img) => rec.recognize(img),
       decode: decoderFor(dishes()),
+      isUnsure: unsure,
       onProgress: (p, msg) => status(msg, 0.1 + 0.9 * p),
     });
     const raw = res.layout
       ? res.reads.map((r) => `${DAY_LABELS[r.day]}, ${SLOT_LABELS[r.slot].toLowerCase()}${r.found ? '' : ' (etichetta non vista)'}: ${r.tries.map((t) => t.text).join(' | ') || '(vuoto)'}`).join('\n')
       : res.reads[0].text;
     const found = res.days.reduce((n, d) => n + !!d.lunch + !!d.dinner, 0);
+    const nUnsure = res.unsure ? res.unsure.reduce((n, d) => n + d.lunch + d.dinner, 0) : 0;
     openReview(res.days, raw, geminiNote + (res.layout
-      ? 'La scrittura a mano è difficile da leggere: correggi quello che non va. I pasti vuoti vengono saltati.'
-      : `Non trovo lo schema PRANZO / CENA (${plural(found, 'pasto indovinato', 'pasti indovinati')}). Prova una foto più dritta di tutta la pagina, oppure correggi qui.`));
+      ? (nUnsure ? `Ho evidenziato in giallo ${plural(nUnsure, 'pasto', 'pasti')} di cui sono meno sicuro: controlla soprattutto quelli. I pasti vuoti vengono saltati.` : 'La scrittura a mano è difficile da leggere: correggi quello che non va. I pasti vuoti vengono saltati.')
+      : `Non trovo lo schema PRANZO / CENA (${plural(found, 'pasto indovinato', 'pasti indovinati')}). Prova una foto più dritta di tutta la pagina, oppure correggi qui.`), res.unsure);
   } catch (e) {
     console.error(e);
     history.back();

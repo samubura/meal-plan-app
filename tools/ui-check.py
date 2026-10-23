@@ -65,6 +65,9 @@ with sync_playwright() as p:
     page.wait_for_selector('#review:not([hidden])', timeout=300_000)
     print(f'scan took {time.time() - t0:.1f}s in headless Chromium')
     page.screenshot(path=out / '4-review.png', full_page=True)
+    n_unsure = page.locator('#reviewDays textarea.unsure').count()
+    assert n_unsure == 0 or 'giallo' in page.text_content('#reviewNote')
+    print(f'unsure highlighted: {n_unsure} of 14')
     page.fill('#r-wed-dinner', 'carne e zucchine')
     # Long dishes wrap and the field grows: nothing to scroll inside a field.
     page.fill('#r-thu-lunch', 'pasta fredda con pesto, pomodorini, mozzarella e olive nere')
@@ -100,6 +103,17 @@ with sync_playwright() as p:
     assert (dish(page, 0), dish(page, 3)) == (d, a), (dish(page, 0), dish(page, 3))
     assert page.text_content('#syncText') == 'Sincronizza'
     print('drag:', repr(a), '<->', repr(d))
+    # Undo from the snackbar, then drag again.
+    page.wait_for_selector('#snack.show button'); page.screenshot(path=out / '7b-undo.png')
+    page.click('#snack button')
+    assert (dish(page, 0), dish(page, 3)) == (a, d) and page.text_content('#syncText') == 'Sincronizzato'
+    page.mouse.move(h['x'] + h['width'] / 2, h['y'] + h['height'] / 2); page.mouse.down()
+    for k in range(1, 11):
+        page.mouse.move(h['x'] + h['width'] / 2, h['y'] + h['height'] / 2 + (tgt['y'] + tgt['height'] / 2 - h['y'] - h['height'] / 2) * k / 10)
+        page.wait_for_timeout(20)
+    page.mouse.up()
+    assert (dish(page, 0), dish(page, 3)) == (d, a)
+    print('undo: ok')
 
     # 5. Edit Monday dinner in the sheet.
     page.click('.meal[data-i="1"] .open'); page.wait_for_selector('#editSheet.open')

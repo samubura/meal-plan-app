@@ -260,5 +260,16 @@ export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' 
 // The decoder the app uses: the word-pair model over FOOD_WORDS and the user's remembered dishes.
 export function decoderFor(dishes = []) {
   const lm = makeLM({}, FOOD_WORDS, dishes);
-  return (frames, o) => decodeLine(frames, { ...o, lm });
+  return Object.assign((frames, o) => decodeLine(frames, { ...o, lm }), { lm });
+}
+
+// Worth a second look? Low reader confidence, words the vocabulary doesn't know, or nothing read where
+// there was ink. Measured on private/dataset: flags about a third of the meals and finds ~60% of the
+// ones that need fixing. ponytail: hand-tuned threshold; retune with more pages.
+export function unsure(read, text, lm, threshold = 82) {
+  const t = read?.tries?.[0];
+  if (!t) return false; // blank row, nothing to check
+  if (!text) return true;
+  const oov = (fold(text).match(/[a-z]{3,}/g) || []).filter((w) => !lm.known(w)).length;
+  return t.conf - 10 * oov < threshold;
 }
