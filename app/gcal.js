@@ -108,7 +108,9 @@ export async function syncWeek(calendarId, days, weekStart, opts, previous = nul
   if (previous && previous.weekStart !== weekStart) for (const x of slots(previous.weekStart, previous.days)) if (x.dish) removed += await del(x.id);
   for (const x of slots(weekStart, days)) {
     if (!x.dish) { if (known.has(x.id)) removed += await del(x.id); continue; }
-    const body = { id: x.id, summary: `${x.label}: ${x.dish}`, start: { dateTime: local(x.start), timeZone }, end: { dateTime: local(x.end), timeZone }, status: 'confirmed' };
+    const body = { id: x.id, summary: `${x.label}: ${x.dish}`, start: { dateTime: local(x.start), timeZone }, end: { dateTime: local(x.end), timeZone }, status: 'confirmed',
+      // A popup from the Google Calendar app before the meal (opts.reminder minutes; 0 = none).
+      reminders: { useDefault: false, overrides: opts.reminder > 0 ? [{ method: 'popup', minutes: opts.reminder }] : [] } };
     if (known.has(x.id)) {
       try { await api(`${cal}/${x.id}`, { method: 'PUT', body }); } catch (e) { if (e.status !== 404) throw e; await api(cal, { method: 'POST', body }); }
     } else {

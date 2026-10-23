@@ -345,12 +345,14 @@
   <h2 id="settingsTitle">Impostazioni</h2>
   <h3>Settimana</h3>
   <label class="field">Settimana dal (lunedì)<input type="date" id="planWeekStart"></label>
-  <h3>Orari</h3>
+  <h3>Orari e promemoria</h3>
   <div class="grid2">
     <label class="field">Pranzo alle<input type="time" id="lunchTime" value="12:45"></label>
     <label class="field">Durata (min)<input type="number" id="lunchMin" value="60" min="5" max="600" step="5" inputmode="numeric"></label>
     <label class="field">Cena alle<input type="time" id="dinnerTime" value="20:00"></label>
     <label class="field">Durata (min)<input type="number" id="dinnerMin" value="60" min="5" max="600" step="5" inputmode="numeric"></label>
+    <label class="field" style="grid-column:1/-1">Promemoria (notifica di Google Calendar)
+      <select id="reminder"><option value="0">Nessuno</option><option value="15">15 minuti prima</option><option value="30" selected>30 minuti prima</option><option value="60">1 ora prima</option></select></label>
   </div>
   <h3>Google Calendar</h3>
   <div class="row-between"><span id="calName" class="muted">Nessun calendario scelto</span><button class="btn tonal" id="changeCal" type="button" style="width:auto;min-height:44px">Cambia</button></div>
@@ -467,7 +469,7 @@ $('reviewDays').addEventListener('keydown', (e) => {
 });
 
 // ---- settings ----
-const TIME_FIELDS = ['lunchTime', 'lunchMin', 'dinnerTime', 'dinnerMin'];
+const TIME_FIELDS = ['lunchTime', 'lunchMin', 'dinnerTime', 'dinnerMin', 'reminder'];
 for (const id of TIME_FIELDS) {
   const v = store.get(id);
   if (v != null) $(id).value = v;
@@ -476,6 +478,7 @@ for (const id of TIME_FIELDS) {
 const times = () => ({
   lunchTime: $('lunchTime').value || '12:45', dinnerTime: $('dinnerTime').value || '20:00',
   lunchMin: +$('lunchMin').value || 60, dinnerMin: +$('dinnerMin').value || 60,
+  reminder: +$('reminder').value,
 });
 
 // ---- dates ----

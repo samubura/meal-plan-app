@@ -8,7 +8,7 @@ import { buildICS } from './app/lib.js';
 const days = [['pasta al pesto, basilico', 'carne e insalata'], ['', 'pizza; birra'], ['', ''], ['farro', ''],
   ['tortellini con la panna', 'pesce e patate'], ['avocado toast', 'pizzeria (pizza)'], ['Roma / nonna', 'caprese ' + 'è'.repeat(40)]]
   .map(([lunch, dinner]) => ({ lunch, dinner }));
-process.stdout.write(buildICS(days, '2026-10-26', { lunchTime: '12:30', dinnerTime: '19:00', lunchMin: 45, dinnerMin: 60 }));
+process.stdout.write(buildICS(days, '2026-10-26', { lunchTime: '12:30', dinnerTime: '19:00', lunchMin: 45, dinnerMin: 60, reminder: 30 }));
 """
 ics = subprocess.run(['node', '--input-type=module', '-e', js], cwd=root, capture_output=True, check=True).stdout
 assert all(len(l) <= 75 for l in ics.split(b'\r\n')), 'line longer than 75 octets'
@@ -23,6 +23,8 @@ for e in events:
     assert start.tzinfo is None and end.tzinfo is None, 'times must be floating'
     assert str(e['SUMMARY']).startswith(('Pranzo: ', 'Cena: '))
     assert (end - start).total_seconds() / 60 == (45 if start.hour == 12 else 60)
+    alarms = e.walk('VALARM')
+    assert len(alarms) == 1 and alarms[0]['TRIGGER'].dt.total_seconds() == -30 * 60, 'reminder 30 min before'
 assert str(events[0]['SUMMARY']) == 'Pranzo: pasta al pesto, basilico'
 assert str(events[2]['SUMMARY']) == 'Cena: pizza; birra'
 assert str(events[-1]['SUMMARY']).endswith('è' * 40)

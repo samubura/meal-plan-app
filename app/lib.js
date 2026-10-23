@@ -200,7 +200,7 @@ const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())
 const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 // days: [{lunch, dinner}] x 7; weekStart: 'YYYY-MM-DD' (Monday);
-// opts: {lunchTime:'12:30', dinnerTime:'19:00', lunchMin:45, dinnerMin:60}; now: Date for DTSTAMP.
+// opts: {lunchTime:'12:30', dinnerTime:'19:00', lunchMin:45, dinnerMin:60, reminder: minutes before (0 = none)}; now: Date for DTSTAMP.
 export function buildICS(days, weekStart, opts, now = new Date()) {
   const [Y, M, D] = weekStart.split('-').map(Number);
   const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
@@ -223,6 +223,7 @@ export function buildICS(days, weekStart, opts, now = new Date()) {
         `DTSTART:${t(start)}`,
         `DTEND:${t(end)}`,
         `SUMMARY:${esc(`${label}: ${dish}`)}`,
+        ...(opts.reminder > 0 ? ['BEGIN:VALARM', 'ACTION:DISPLAY', `TRIGGER:-PT${opts.reminder}M`, `DESCRIPTION:${esc(`${label}: ${dish}`)}`, 'END:VALARM'] : []),
         'END:VEVENT',
       );
     }

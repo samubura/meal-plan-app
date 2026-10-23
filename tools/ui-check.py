@@ -95,6 +95,7 @@ with sync_playwright() as p:
     print('today card:', page.text_content('#todayCard .head').strip())
     posts = [json.loads(c[2]) for c in calls if c[0] == 'POST' and c[2]]
     assert all(re.fullmatch(r'meal2026\d{4}[ld]', x['id']) and x['summary'].startswith(('Pranzo: ', 'Cena: ')) and x['start']['timeZone'] for x in posts)
+    assert all(x['reminders'] == {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': 30}]} for x in posts), 'reminder 30 min before'
     assert any(c[0] == 'PUT' and c[1].endswith('/meal20261026l') for c in calls), 'conflict must update'
     print('first sync:', {m: sum(c[0] == m for c in calls) for m in ('POST', 'PUT', 'DELETE')}, '| e.g.', posts[0]['summary'], posts[0]['start']['dateTime'])
 
