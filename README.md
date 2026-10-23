@@ -23,6 +23,9 @@ first, which is far more accurate on cursive. The photo is then sent to Google. 
 (free limit, no network, the plan changed, 45 s timeout) the app reads the photo on the phone as usual and
 says so: the app never depends on it. No card on the key means no charges are possible.
 
+The home screen starts with today's meals (tap to jump to that day), events carry a Google Calendar reminder
+(30 minutes before by default, ⋮ › *Orari e promemoria*), and the app offers "Aggiorna" when a new version is out.
+
 Dishes you type or fix are remembered: they're suggested while typing and help the next scans read your
 writing. Android's back button closes sheets and screens like in a native app.
 

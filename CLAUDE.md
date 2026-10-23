@@ -47,6 +47,21 @@ profile (close lines merge; finds ruled lines instead). Lunch notes are small te
 Rejected after measuring: fine-tuning on the user's pages (better on repeated dishes, worse on new ones: 134 vs 139),
 Wikibooks cookbook lexicon, full-res photos (no gain), TrOCR, big general dictionary, second-line capture, binary/lum inputs.
 
+## App behaviour worth knowing (Oct 2026)
+- Home: "today" card (tomorrow after dinner; first day before the week; "new week" after it), tap = scroll to the day;
+  week list with drag-to-swap + undo; round camera FAB. Review highlights unsure meals (`ocr.js unsure`).
+- Gemini: opt-in switch on the scan screen (remembered), shown only with a key Google accepted; "Rileggi con Gemini".
+- Calendar: one request at a time with retries; known events PUT directly; event reminders (popup, default 30 min);
+  the Google account is remembered and passed as `hint` (no account chooser). PWA can't schedule its own notifications.
+- Updates: SW revalidates own files (`cache: 'no-cache'`), "Aggiorna" prompt; version (commit) shown in settings.
+- Sheets close by dragging down; browser pull-to-refresh disabled (`overscroll-behavior-y: none`).
+
+## Pending
+- Gemini benchmark on private/dataset stopped by Google 503s (1 page: 13/14 exact). Rerun `node tools/gemini-bench.mjs --personal --log`
+  (answers cached in private/train/gemini-cache.json).
+- Not tested on the real Pixel: touch drag thresholds, GIS popup inside the installed PWA.
+- Home-made sheets with "lun/mar" abbreviations aren't recognised as day headings (findLayout needs 5+ letters).
+
 ## Next ideas
 1. More pages (with transcriptions) -> retry fine-tuning with fewer epochs / synthetic lines of new phrases; gate on "new dishes".
 2. Better wrapped-line and above-line notes capture (several "wrong" dishes are text outside the line).
