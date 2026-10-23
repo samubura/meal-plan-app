@@ -242,7 +242,12 @@
   .chips { display: flex; gap: 8px; margin: 4px 0 14px; }
   .chips label { flex: 1; }
   .chips input { position: absolute; opacity: 0; pointer-events: none; }
-  .chips span { display: grid; place-items: center; min-height: 40px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); font-size: .9rem; font-weight: 600; cursor: pointer; }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px; }
+  .checks input { position: absolute; opacity: 0; pointer-events: none; }
+  .checks span { padding: 0 14px; }
+  .chips span, .checks span { display: grid; place-items: center; min-height: 40px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); font-size: .9rem; font-weight: 600; cursor: pointer; }
+  .checks input:checked + span { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+  .checks input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
   .chips input:checked + span { background: var(--accent-soft); color: var(--accent-soft-text); border-color: transparent; }
   .chips input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -251,7 +256,7 @@
   .tile span { font-size: .8rem; color: var(--muted); font-weight: 600; }
   .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px 14px; margin-top: 8px; }
   .bars { margin: 0; padding: 0; list-style: none; }
-  .bars li { display: grid; grid-template-columns: 7.5em 1fr 2.2em; align-items: center; gap: 10px; min-height: 36px; font-size: .92rem; }
+  .bars button { width: 100%; border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; display: grid; grid-template-columns: 7.5em 1fr 2.2em; align-items: center; gap: 10px; min-height: 40px; font-size: .92rem; }
   .bars .track { height: 10px; }
   .bars .fill { display: block; height: 100%; min-width: 2px; background: var(--bar); border-radius: 0 4px 4px 0; }
   .bars .n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -259,6 +264,8 @@
   .top li:first-child { border-top: 0; }
   .top .rank { flex: none; width: 1.4em; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
   .top .d { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .dishrow { display: flex; align-items: baseline; gap: 10px; width: 100%; min-height: 44px; border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+  .dishrow small { display: block; color: var(--muted); font-size: .82rem; }
   .weeks details { border-top: 1px solid var(--line); }
   .weeks details:first-child { border-top: 0; }
   .weeks summary span { flex: 1; }
@@ -391,6 +398,19 @@
   </div>
 </section>
 
+<!-- Categorie dei piatti -->
+<section id="cats" class="screen" hidden>
+  <header class="appbar">
+    <button class="icon-btn" type="button" data-back aria-label="Indietro"><svg><use href="#i-back"/></svg></button>
+    <h1>Categorie dei piatti</h1>
+  </header>
+  <div class="content">
+    <label class="field">Mostra<select id="catFilter"></select></label>
+    <p class="hint muted" style="margin-top:10px">Tocca un piatto per scegliere le sue categorie. Le tue scelte valgono anche per le prossime settimane.</p>
+    <ul id="catList" class="card top" style="list-style:none"></ul>
+  </div>
+</section>
+
 <!-- Modifica pasto -->
 <div id="scrim" class="scrim" hidden></div>
 <section id="editSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="editTitle">
@@ -434,6 +454,18 @@
   <p class="muted" style="margin:14px 0 0;font-size:.8rem">Versione <span id="appVersion">dev</span></p>
 </section>
 
+<!-- Categorie di un piatto -->
+<section id="catSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="catTitle">
+  <div class="grip"></div>
+  <h2 id="catTitle"></h2>
+  <p class="muted" style="margin:-6px 0 14px;font-size:.9rem">Anche più di una. Nessuna = Altro.</p>
+  <div id="catChecks" class="checks" role="group" aria-label="Categorie"></div>
+  <div class="actions">
+    <button class="btn text" id="catAuto" type="button">Automatiche</button>
+    <button class="btn primary" id="catSave" type="button">Salva</button>
+  </div>
+</section>
+
 <!-- Scelta calendario -->
 <section id="calSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="calTitle">
   <div class="grip"></div>
@@ -464,7 +496,7 @@
 <script type="module">
 import Tesseract from 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js';
 import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs';
-import { scanPlan, buildICS, DAY_KEYS, historyStats, mergeCalendarMeals } from './lib.js';
+import { scanPlan, buildICS, DAY_KEYS, historyStats, mergeCalendarMeals, CATEGORIES } from './lib.js';
 import { createRecognizer, decoderFor, unsure } from './ocr.js';
 import { CLIENT_ID, loadGis, signIn, calendars, syncWeek, googleAccount, forgetGoogle, mealEvents } from './gcal.js';
 import { readPlanWithGemini, flashModels } from './gemini.js';
@@ -570,7 +602,7 @@ const shortDate = (d) => d.toLocaleDateString('it-IT', { day: 'numeric', month: 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // ---- navigation: screens and sheets on the history stack, so Android's back button works ----
-const SCREENS = ['home', 'scan', 'working', 'review', 'stats'];
+const SCREENS = ['home', 'scan', 'working', 'review', 'stats', 'cats'];
 let sheet = null;
 function showScreen(id) {
   for (const s of SCREENS) $(s).hidden = s !== id;
@@ -579,6 +611,7 @@ function showScreen(id) {
   window.scrollTo(0, 0);
   if (id === 'home') renderPlan();
   if (id === 'stats') renderStats();
+  if (id === 'cats') renderCats();
 }
 function go(id, replace = false) {
   closeSheet(true);
@@ -937,7 +970,7 @@ function renderStats() {
   const period = store.get('statsPeriod', '4w'), h = store.get('history', {});
   document.querySelector(`input[name=period][value="${period}"]`).checked = true;
   const back = PERIODS[period], from = back == null ? '' : iso(dateOf(iso(mondayOf(new Date())), -7 * back));
-  const s = historyStats(h, { from });
+  const s = historyStats(h, { from, overrides: store.get('dishCats', {}) });
   $('recover').hidden = !CLIENT_ID;
   $('statsBody').innerHTML = !s.meals ? `<div class="hero"><div class="art"><svg><use href="#i-chart"/></svg></div>
       <h2>${Object.keys(h).length ? 'Niente in questo periodo' : 'Ancora nessuna settimana'}</h2>
@@ -950,10 +983,11 @@ function renderStats() {
     <h3 class="section-title">Cosa mangiamo</h3>
     <div class="card"><ul class="bars">${(() => {
       const cats = [...s.categories.filter((c) => c.key !== 'altro'), ...s.categories.filter((c) => c.key === 'altro')], max = Math.max(...cats.map((c) => c.count));
-      return cats.map((c) => `<li aria-label="${c.label}: ${plural(c.count, 'pasto', 'pasti')} su ${s.meals}"><span>${c.label}</span>
-        <span class="track" aria-hidden="true"><span class="fill" style="width:${(100 * c.count / max).toFixed(1)}%"></span></span><span class="n">${c.count}</span></li>`).join('');
+      return cats.map((c) => `<li><button type="button" data-cat="${c.key}" aria-label="${c.label}: ${plural(c.count, 'pasto', 'pasti')} su ${s.meals}. Mostra i piatti"><span>${c.label}</span>
+        <span class="track" aria-hidden="true"><span class="fill" style="width:${(100 * c.count / max).toFixed(1)}%"></span></span><span class="n">${c.count}</span></button></li>`).join('');
     })()}</ul></div>
-    <p class="hint muted" style="margin-top:8px">Un piatto può contare in più categorie (es. «speck e zucchine»: salumi e verdure).</p>
+    <p class="hint muted" style="margin-top:8px">Un piatto può contare in più categorie (es. «speck e zucchine»: salumi e verdure). Tocca una barra per vedere i piatti.</p>
+    <button class="btn" type="button" data-cat="" style="margin-top:10px">Rivedi le categorie${(() => { const n = s.dishes.filter((d) => d.cats.includes('altro')).length; return n ? ` (${n} da sistemare)` : ''; })()}</button>
     <h3 class="section-title">I piatti più frequenti</h3>
     <ol class="card top" style="list-style:none">${s.top.map((t, i) => `<li><span class="rank">${i + 1}</span><span class="d">${esc(t.dish)}</span><span class="muted">${t.count}×</span></li>`).join('')}</ol>`;
   const weeks = Object.keys(h).sort().reverse();
@@ -962,6 +996,47 @@ function renderStats() {
       <dl>${h[ws].days.map((d, i) => `<dt>${SHORT_DAYS[i]}</dt><dd>${esc(d[0] || '–')} · ${esc(d[1] || '–')}</dd>`).join('')}</dl></details>`).join('')
     : '<p class="muted" style="margin:10px 0">Nessuna settimana salvata.</p>';
 }
+$('statsBody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cat]');
+  if (b) { catFilter = b.dataset.cat || null; go('cats'); }
+});
+
+// ---- the user's categories for each dish (mealplan.dishCats: {dishKey: [keys]}) ----
+const CAT_LABEL = Object.fromEntries([...CATEGORIES.map((c) => [c.key, c.label]), ['altro', 'Altro']]);
+let catFilter = null, catDishes = [], catEditing = null;
+function renderCats() {
+  const own = store.get('dishCats', {});
+  catDishes = historyStats(store.get('history', {}), { overrides: own }).dishes;
+  const n = (k) => catDishes.filter((d) => d.cats.includes(k)).length;
+  if (catFilter == null) catFilter = n('altro') ? 'altro' : 'all';
+  $('catFilter').innerHTML = [['all', `Tutti i piatti (${catDishes.length})`], ['altro', `Da sistemare: Altro (${n('altro')})`],
+    ...CATEGORIES.map((c) => [c.key, `${c.label} (${n(c.key)})`])].map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+  $('catFilter').value = catFilter;
+  const shown = catDishes.filter((d) => catFilter === 'all' || d.cats.includes(catFilter));
+  $('catList').innerHTML = shown.length ? shown.map((d) => `<li><button type="button" class="dishrow" data-key="${esc(d.key)}">
+      <span class="d">${esc(d.dish)}<small>${d.cats.map((k) => CAT_LABEL[k]).join(' · ')}${own[d.key] ? ' · scelte da te' : ''}</small></span>
+      <span class="muted">${d.count}×</span></button></li>`).join('')
+    : `<li class="muted">${catFilter === 'altro' ? 'Tutti i piatti hanno una categoria.' : 'Nessun piatto.'}</li>`;
+}
+$('catFilter').addEventListener('change', () => { catFilter = $('catFilter').value; renderCats(); });
+$('catList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-key]');
+  if (!b) return;
+  catEditing = catDishes.find((d) => d.key === b.dataset.key);
+  $('catTitle').textContent = catEditing.dish;
+  $('catChecks').innerHTML = CATEGORIES.map((c) => `<label><input type="checkbox" value="${c.key}"${catEditing.cats.includes(c.key) ? ' checked' : ''}><span>${c.label}</span></label>`).join('');
+  $('catAuto').hidden = !store.get('dishCats', {})[catEditing.key];
+  openSheet('catSheet');
+});
+function saveCats(cats) {
+  const own = store.get('dishCats', {});
+  if (cats) own[catEditing.key] = cats; else delete own[catEditing.key];
+  store.set('dishCats', own);
+  closeSheet(); renderCats();
+  snack(cats ? `«${catEditing.dish}»: ${cats.length ? cats.map((k) => CAT_LABEL[k]).join(', ') : 'Altro'}.` : 'Tornate le categorie automatiche.');
+}
+$('catSave').addEventListener('click', () => saveCats([...$('catChecks').querySelectorAll('input:checked')].map((i) => i.value)));
+$('catAuto').addEventListener('click', () => saveCats(null));
 document.querySelector('#stats .chips').addEventListener('change', (e) => { store.set('statsPeriod', e.target.value); renderStats(); });
 // Rebuild the weeks that are in Google Calendar but not on this phone (e.g. after reinstalling).
 $('recover').addEventListener('click', async () => {

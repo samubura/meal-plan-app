@@ -181,6 +181,12 @@ test('history: categories, statistics, calendar recovery', async () => {
   assert.deepEqual(s.top[0], { dish: 'pasta al pesto', count: 14 });
   assert.equal(s.categories.find((c) => c.key === 'pasta').count, 14);
   assert.equal(historyStats(h, { from: '2026-10-26' }).meals, 7);
+  // The user's own categories win over the rules.
+  const { dishKey } = await import('../app/lib.js');
+  assert.deepEqual([...categorize('Ancona', { [dishKey('ancona')]: ['fuori'] })], ['fuori']);
+  const o = historyStats(h, { overrides: { [dishKey('Pasta al pesto')]: ['pasta', 'veg'] } });
+  assert.equal(o.categories.find((c) => c.key === 'veg').count, 14);
+  assert.deepEqual(o.dishes[0].cats, ['pasta', 'veg']);
   // Calendar events: rebuilt into weeks (Monday-based); weeks the app has are kept.
   const n = mergeCalendarMeals(h, [{ id: 'meal20261013d', summary: 'Cena: pizza / mamma' }, { id: 'meal20261012l', summary: 'Pranzo: farro' },
     { id: 'meal20261026l', summary: 'Pranzo: altro' }, { id: 'x1', summary: 'Riunione' }]);

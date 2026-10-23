@@ -720,7 +720,10 @@ export const CATEGORIES = [
 ].map(([key, label, words]) => ({ key, label, words: new Set(words.split(' ')) }));
 const VEG_STAND_INS = new Set(['burger', 'hamburger', 'polpette', 'polpettone', 'cotolette', 'cotoletta']);
 
-export function categorize(dish) {
+// overrides: {dishKey: [category keys]} chosen by the user ([] or ['altro'] = Altro); they win over the rules.
+export function categorize(dish, overrides = {}) {
+  const o = overrides[dishKey(dish)];
+  if (o) return new Set(o.length ? o : ['altro']);
   const words = norm(dish).match(/[a-z]+/g) || [];
   const cats = new Set();
   for (const c of CATEGORIES) if (words.some((w) => c.words.has(w))) cats.add(c.key);
@@ -731,10 +734,10 @@ export function categorize(dish) {
   return cats;
 }
 
-const dishKey = (d) => norm(d).replace(/[^a-z0-9/+]+/g, ' ').replace(/\s*([/+])\s*/g, ' $1 ').trim();
+export const dishKey = (d) => norm(d).replace(/[^a-z0-9/+]+/g, ' ').replace(/\s*([/+])\s*/g, ' $1 ').trim();
 
 // Weeks of `history` starting on or after `from` (YYYY-MM-DD, optional).
-export function historyStats(history, { from = '' } = {}) {
+export function historyStats(history, { from = '', overrides = {} } = {}) {
   const weeks = Object.keys(history).filter((w) => w >= from).sort();
   const byCat = new Map([...CATEGORIES.map((c) => [c.key, 0]), ['altro', 0]]);
   const dishes = new Map(); // key -> {count, forms: Map(original -> n)}
@@ -743,8 +746,9 @@ export function historyStats(history, { from = '' } = {}) {
     const t = (dish || '').trim();
     if (!t) continue;
     meals++;
-    for (const c of categorize(t)) byCat.set(c, byCat.get(c) + 1);
-    const k = dishKey(t), e = dishes.get(k) || { count: 0, forms: new Map() };
+    const cats = categorize(t, overrides);
+    for (const c of cats) byCat.set(c, byCat.get(c) + 1);
+    const k = dishKey(t), e = dishes.get(k) || { key: k, cats: [...cats], count: 0, forms: new Map() };
     e.count++; e.forms.set(t, (e.forms.get(t) || 0) + 1);
     dishes.set(k, e);
   }
@@ -752,8 +756,10 @@ export function historyStats(history, { from = '' } = {}) {
   return {
     weeks: weeks.length, meals, out: byCat.get('fuori'),
     categories: [...byCat].filter(([, n]) => n).map(([key, count]) => ({ key, label: label(key), count })).sort((a, b) => b.count - a.count),
-    top: [...dishes.values()].map((e) => ({ dish: [...e.forms].sort((a, b) => b[1] - a[1])[0][0], count: e.count }))
-      .sort((a, b) => b.count - a.count || a.dish.localeCompare(b.dish)).slice(0, 10),
+    // Every dish once (its most used spelling), most frequent first.
+    dishes: [...dishes.values()].map((e) => ({ dish: [...e.forms].sort((a, b) => b[1] - a[1])[0][0], key: e.key, cats: e.cats, count: e.count }))
+      .sort((a, b) => b.count - a.count || a.dish.localeCompare(b.dish)),
+    get top() { return this.dishes.slice(0, 10).map(({ dish, count }) => ({ dish, count })); },
   };
 }
 

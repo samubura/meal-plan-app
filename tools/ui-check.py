@@ -199,6 +199,24 @@ with sync_playwright() as p:
     page.click('input[name=period][value=all] + span')
     assert page.text_content('.tile b') == '2'
     page.screenshot(path=out / '11-stats.png', full_page=True)
+    # 10. Categories: from the stats, give a dish the user's own categories, then back to automatic.
+    page.click('#statsBody [data-cat=""]'); page.wait_for_selector('#cats:not([hidden])')
+    page.select_option('#catFilter', 'all'); first = page.text_content('.dishrow .d').strip()
+    page.click('.dishrow'); page.wait_for_selector('#catSheet.open')
+    page.screenshot(path=out / '13-cat-sheet.png')
+    for cb in page.query_selector_all('#catChecks input'):
+        if cb.is_checked(): cb.evaluate('el => el.click()')
+    page.click('#catChecks input[value=uova] + span'); page.click('#catSave')
+    print('category:', wait_snack(page, 'Uova'))
+    assert 'scelte da te' in page.text_content('#catList li')
+    page.screenshot(path=out / '14-cats.png', full_page=True)
+    page.go_back(); page.wait_for_selector('#stats:not([hidden])')
+    assert page.is_visible('.bars [data-cat=uova]')
+    page.click('.bars [data-cat=uova]'); page.wait_for_selector('#cats:not([hidden])')
+    assert page.input_value('#catFilter') == 'uova'
+    page.click('.dishrow'); page.wait_for_selector('#catSheet.open'); page.click('#catAuto')
+    wait_snack(page, 'automatiche'); assert 'scelte da te' not in page.text_content('#catList')
+    print('categories: ok'); page.go_back(); page.wait_for_selector('#stats:not([hidden])')
     print('horizontal overflow (stats):', page.evaluate('document.documentElement.scrollWidth > window.innerWidth'))
     page.go_back(); page.wait_for_selector('#home:not([hidden])')
     print('horizontal overflow:', page.evaluate('document.documentElement.scrollWidth > window.innerWidth'))

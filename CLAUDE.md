@@ -58,6 +58,7 @@ Wikibooks cookbook lexicon, full-res photos (no gain), TrOCR, big general dictio
   stats screen (`historyStats`, `categorize`/`CATEGORIES` keyword sets in lib.js); "Recupera dal calendario" lists
   `meal\d{8}[ld]` events (`gcal.js mealEvents`) and `mergeCalendarMeals` fills missing weeks (app copy wins);
   with no plan on the phone it restores the latest current/future week as the plan.
+  Screen `cats` (from stats): per-dish categories chosen by the user, `mealplan.dishCats` {dishKey: [keys]}, win over the rules.
 - Sheets close by dragging down; browser pull-to-refresh disabled (`overscroll-behavior-y: none`).
 
 ## Pending (checked on the user's Pixel 23 Oct 2026: drag, sheets, Google sign-in in the installed PWA all OK)

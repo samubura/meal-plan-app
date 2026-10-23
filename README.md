@@ -28,7 +28,8 @@ The home screen starts with today's meals (tap to jump to that day), events carr
 
 **Statistiche** (button under the week, or from the empty home screen) counts every saved week: meals,
 meals out, food categories (a dish can be in several), the most frequent dishes, and the past weeks to browse.
-Periods: 4 weeks, 3 months, all. **Recupera dal calendario** rebuilds weeks from the app's own events in
+Periods: 4 weeks, 3 months, all. **Rivedi le categorie** (or a tap on a bar) lists the dishes, the uncategorised ones first;
+tap one to pick its categories yourself (kept on the phone, used for every week). **Recupera dal calendario** rebuilds weeks from the app's own events in
 Google Calendar, so a reinstall gets the history (and the coming week's plan) back.
 
 Dishes you type or fix are remembered: they're suggested while typing and help the next scans read your
