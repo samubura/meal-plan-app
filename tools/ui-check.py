@@ -66,6 +66,11 @@ with sync_playwright() as p:
     print(f'scan took {time.time() - t0:.1f}s in headless Chromium')
     page.screenshot(path=out / '4-review.png', full_page=True)
     page.fill('#r-wed-dinner', 'carne e zucchine')
+    # Long dishes wrap and the field grows: nothing to scroll inside a field.
+    page.fill('#r-thu-lunch', 'pasta fredda con pesto, pomodorini, mozzarella e olive nere')
+    box = page.evaluate('(() => { const e = document.querySelector("#r-thu-lunch"); return [e.scrollHeight, e.clientHeight, e.scrollWidth, e.clientWidth, e.offsetHeight]; })()')
+    assert box[0] <= box[1] + 2 and box[2] <= box[3] and box[4] > 50, box
+    page.screenshot(path=out / '4b-review-long.png')
 
     # 3. Save and sync: pick the calendar (Family first), back on the plan.
     page.click('#saveSync')
@@ -98,6 +103,10 @@ with sync_playwright() as p:
 
     # 5. Edit Monday dinner in the sheet.
     page.click('.meal[data-i="1"] .open'); page.wait_for_selector('#editSheet.open')
+    page.fill('#editText', 'carne e z')  # remembered from the review: offered as a chip
+    page.wait_for_selector('#suggest:not([hidden]) button')
+    assert page.text_content('#suggest button') == 'carne e zucchine'
+    page.screenshot(path=out / '8a-suggest.png')
     page.fill('#editText', 'pesce e patate')
     page.screenshot(path=out / '8-edit.png')
     page.click('#editSave'); page.wait_for_timeout(300)

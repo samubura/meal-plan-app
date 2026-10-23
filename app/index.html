@@ -96,20 +96,21 @@
   input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
   /* home: the plan */
-  .day { margin: 14px 0 0; }
-  .day h2 { display: flex; align-items: center; gap: 8px; font-size: .95rem; margin: 0 0 8px 4px; font-weight: 700; }
+  .day { margin: 10px 0 0; }
+  .day h2 { display: flex; align-items: center; gap: 8px; font-size: .92rem; margin: 0 0 5px 4px; font-weight: 700; }
   .day h2 .date { color: var(--muted); font-weight: 600; }
   .chip-today { font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
   .meals { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-  .meal { display: flex; align-items: center; min-height: 64px; border-top: 1px solid var(--line); background: var(--surface); position: relative; }
+  .meal { display: flex; align-items: center; min-height: 54px; border-top: 1px solid var(--line); background: var(--surface); position: relative; }
   .meal:first-child { border-top: 0; }
-  .meal .open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px 4px 10px 14px; border: 0; background: none; text-align: left; cursor: pointer; min-height: 64px; }
-  .slot { flex: none; width: 74px; display: flex; flex-direction: column; gap: 1px; font-size: .78rem; color: var(--muted); font-weight: 600; }
-  .slot b { display: flex; align-items: center; gap: 5px; color: var(--accent); font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; }
-  .slot svg { width: 15px; height: 15px; }
-  .dishname { flex: 1; min-width: 0; font-size: 1.05rem; font-weight: 500; overflow-wrap: anywhere; }
+  .meal .open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 0 7px 12px; border: 0; background: none; text-align: left; cursor: pointer; min-height: 54px; }
+  .slot { flex: none; width: 60px; display: flex; flex-direction: column; gap: 0; font-size: .74rem; color: var(--muted); font-weight: 600; }
+  .slot b { display: block; color: var(--accent); font-size: .74rem; text-transform: uppercase; letter-spacing: .02em; }
+  .slot > span { display: flex; align-items: center; gap: 3px; }
+  .slot svg { width: 13px; height: 13px; }
+  .dishname { flex: 1; min-width: 0; font-size: 1rem; line-height: 1.3; font-weight: 500; overflow-wrap: anywhere; }
   .dishname.empty { color: var(--muted); font-weight: 400; font-style: italic; }
-  .handle { flex: none; width: 52px; align-self: stretch; border: 0; background: none; display: grid; place-items: center; color: var(--muted); cursor: grab; touch-action: none; }
+  .handle { flex: none; width: 44px; align-self: stretch; border: 0; background: none; display: grid; place-items: center; color: var(--muted); cursor: grab; touch-action: none; }
   .handle svg { width: 24px; height: 24px; }
   .meal.drop-target { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
   .meal.drag-source .open, .meal.drag-source .handle { opacity: .35; }
@@ -139,14 +140,19 @@
   .notice { background: var(--accent-soft); color: var(--accent-soft-text); border-radius: 12px; padding: 12px 14px; margin: 4px 0 14px; font-size: .95rem; }
   .field { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); font-weight: 600; }
   .field input, .field select, .dish {
-    width: 100%; min-height: 52px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line);
-    background: var(--surface); color: var(--text); font: inherit; font-size: 1.02rem; font-weight: 400;
+    width: 100%; min-height: 48px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--text); font: inherit; font-size: 1rem; font-weight: 400;
   }
+  /* Dish fields wrap and grow with the text: never scroll inside a field. */
+  textarea.dish { display: block; resize: none; overflow: hidden; line-height: 1.3; min-height: 44px; padding: 11px 12px; field-sizing: content; }
+  .suggest { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+  .suggest button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 16px; min-height: 36px; padding: 4px 12px; font-size: .9rem; cursor: pointer; text-align: left; }
+  .rmeal .suggest { grid-column: 2; margin-top: 0; }
   .field input:focus, .field select:focus, .dish:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
-  .rday { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin: 12px 0; }
-  .rday h2 { font-size: .95rem; margin: 0 0 8px; }
-  .rmeal { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 8px; margin: 6px 0; }
-  .rmeal label { font-size: .78rem; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+  .rday { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 10px 8px; margin: 8px 0; }
+  .rday h2 { font-size: .92rem; margin: 0 0 4px 2px; }
+  .rmeal { display: grid; grid-template-columns: 50px 1fr; align-items: center; gap: 4px 6px; margin: 5px 0; }
+  .rmeal label { font-size: .7rem; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
 
   /* bottom sheets */
   .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .4); opacity: 0; transition: opacity .2s; }
@@ -175,7 +181,7 @@
 
   /* snackbar */
   .snack {
-    position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 88px); z-index: 40; max-width: 560px; margin: 0 auto;
+    position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 88px); z-index: 19; /* under sheets */ max-width: 560px; margin: 0 auto;
     background: #263329; color: #eef5ef; border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow-lift);
     transform: translateY(20px); opacity: 0; transition: .2s; pointer-events: none;
   }
@@ -293,7 +299,7 @@
 <section id="editSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="editTitle">
   <div class="grip"></div>
   <h2 id="editTitle"></h2>
-  <label class="field">Piatto<input id="editText" list="known" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"></label>
+  <label class="field">Piatto<textarea class="dish" id="editText" rows="1" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"></textarea></label>
   <label class="field" style="margin-top:14px">Sposta in<select id="editMove"></select></label>
   <div class="actions">
     <button class="btn text danger" id="editClear" type="button">Svuota</button>
@@ -330,7 +336,7 @@
 </section>
 
 <div id="snack" class="snack" role="status" aria-live="polite"></div>
-<datalist id="known"></datalist>
+<div id="suggest" class="suggest" hidden></div>
 
 <section id="cam" class="cam" hidden aria-label="Fotocamera">
   <video id="video" playsinline muted autoplay></video>
@@ -361,6 +367,7 @@ ort.env.wasm.numThreads = 1;
 const MODEL = 'models/latin_PP-OCRv5_mobile_rec';
 
 const $ = (id) => document.getElementById(id);
+const SUG = $('suggest'); // suggestion chips, moved under the field being typed in
 const DAY_LABELS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 const SLOT_LABELS = { lunch: 'Pranzo', dinner: 'Cena' };
 const SLOTS = ['lunch', 'dinner'];
@@ -384,9 +391,37 @@ function rememberDishes(list) {
   const seen = new Set(), out = [];
   for (const d of [...list, ...dishes()]) { const k = d.trim().toLowerCase(); if (k && !seen.has(k)) { seen.add(k); out.push(d.trim()); } }
   store.set('dishes', out.slice(0, 400));
-  $('known').replaceChildren(...out.map((d) => Object.assign(document.createElement('option'), { value: d })));
 }
 rememberDishes([]);
+
+// ---- dish fields: grow with the text; remembered dishes as suggestion chips ----
+// field-sizing: content does it natively where supported; this is the fallback.
+function autosize(el) { if (!CSS.supports?.('field-sizing', 'content')) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; } }
+const fold = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+function suggest(el) {
+  const q = fold(el.value), box = SUG;
+  const hits = q.length < 2 ? [] : dishes().filter((d) => fold(d).includes(q) && fold(d) !== q).slice(0, 3);
+  if (!hits.length) { box.hidden = true; return; }
+  box.replaceChildren(...hits.map((d) => Object.assign(document.createElement('button'), { type: 'button', textContent: d })));
+  el.after(box);
+  box.hidden = false;
+  box.onpointerdown = (e) => e.preventDefault(); // keep the keyboard open
+  box.onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    el.value = b.textContent;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    box.hidden = true;
+  };
+}
+document.addEventListener('input', (e) => { if (e.target.matches?.('textarea.dish')) { e.target.value = e.target.value.replace(/\n/g, ' '); autosize(e.target); suggest(e.target); } });
+document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea.dish')) setTimeout(() => { if (!document.activeElement?.matches('textarea.dish')) SUG.hidden = true; }, 0); });
+$('reviewDays').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.matches('textarea.dish')) return;
+  e.preventDefault(); // Enter = next meal
+  const all = [...document.querySelectorAll('#reviewDays textarea.dish')], next = all[all.indexOf(e.target) + 1];
+  if (next) next.focus(); else e.target.blur();
+});
 
 // ---- settings ----
 const TIME_FIELDS = ['lunchTime', 'lunchMin', 'dinnerTime', 'dinnerMin'];
@@ -481,7 +516,7 @@ function renderPlan() {
         const i = di * 2 + si, text = d[slot].text;
         return `<div class="meal" data-i="${i}">
           <button class="open" type="button" data-edit="${i}" aria-label="${DAY_LABELS[di]}, ${SLOT_LABELS[slot]}: ${esc(text || 'nessun pasto')}. Modifica">
-            <span class="slot"><b><svg><use href="#i-${slot === 'lunch' ? 'sun' : 'moon'}"/></svg>${SLOT_LABELS[slot]}</b>${slot === 'lunch' ? t.lunchTime : t.dinnerTime}</span>
+            <span class="slot"><b>${SLOT_LABELS[slot]}</b><span><svg><use href="#i-${slot === 'lunch' ? 'sun' : 'moon'}"/></svg>${slot === 'lunch' ? t.lunchTime : t.dinnerTime}</span></span>
             <span class="dishname${text ? '' : ' empty'}">${text ? esc(text) : 'Nessun pasto'}</span>
           </button>
           <button class="handle" type="button" data-drag="${i}" aria-label="Trascina per spostare"><svg><use href="#i-drag"/></svg></button>
@@ -521,6 +556,7 @@ $('plan').addEventListener('click', (e) => {
   editing = +b.dataset.edit;
   $('editTitle').textContent = slotName(editing);
   $('editText').value = meal(editing).text;
+  autosize($('editText'));
   $('editMove').innerHTML = [...Array(14)].map((_, i) => `<option value="${i}">${i === editing ? 'Resta qui' : `${slotName(i)}${meal(i).text ? ` (scambia con “${esc(meal(i).text)}”)` : ''}`}</option>`).join('');
   $('editMove').value = editing;
   openSheet('editSheet');
@@ -536,7 +572,7 @@ function saveEdit(text) {
 }
 $('editSave').addEventListener('click', () => saveEdit($('editText').value));
 $('editClear').addEventListener('click', () => saveEdit(''));
-$('editText').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveEdit($('editText').value); });
+$('editText').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveEdit($('editText').value); } });
 
 // Drag a meal by its handle onto another slot: the two swap places.
 let dragState = null;
@@ -664,13 +700,14 @@ if (CLIENT_ID) loadGis().catch(() => {}); // ready before the tap, so the sign-i
 let draft = null; // {days: [{lunch, dinner}], raw}
 function openReview(days, raw, note) {
   draft = { raw };
+  document.body.append(SUG); SUG.hidden = true; // out of the way of the re-render
   $('weekStart').value = nextMonday();
   $('reviewNote').textContent = note;
   $('reviewDays').innerHTML = days.map((d, i) => `
     <div class="rday"><h2>${DAY_LABELS[i]}</h2>${SLOTS.map((s) => `
       <div class="rmeal"><label for="r-${DAY_KEYS[i]}-${s}">${SLOT_LABELS[s]}</label>
-      <input class="dish" id="r-${DAY_KEYS[i]}-${s}" list="known" autocomplete="off" autocapitalize="sentences" value="${esc(d[s])}"></div>`).join('')}</div>`).join('');
-  document.querySelectorAll('#reviewDays .dish').forEach((el) => el.addEventListener('input', () => { el.dataset.edited = '1'; }, { once: true }));
+      <textarea class="dish" id="r-${DAY_KEYS[i]}-${s}" rows="1" autocomplete="off" autocapitalize="sentences" enterkeyhint="next">${esc(d[s])}</textarea></div>`).join('')}</div>`).join('');
+  document.querySelectorAll('#reviewDays .dish').forEach((el) => { el.addEventListener('input', () => { el.dataset.edited = '1'; }, { once: true }); autosize(el); });
   go('review', history.state?.screen === 'working'); // the review takes the place of the progress screen
 }
 async function saveReview(sync) {
