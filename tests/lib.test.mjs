@@ -1,0 +1,117 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parsePlan, matchDay, matchMeal, correctDish, snapDish, findLayout, buildICS, fold } from '../app/lib.js';
+
+test('day headings: multilingual, accents, garbled', () => {
+  assert.equal(matchDay('Monday'), 0);
+  assert.equal(matchDay('Lunedì'), 0);
+  assert.equal(matchDay('Mercoledi'), 2);
+  assert.equal(matchDay('Weanesday'), 2);
+  assert.equal(matchDay('Thursclay'), 3);
+  assert.equal(matchDay('segunda-feira'), 0);
+  assert.equal(matchDay('Samstag'), 5);
+  assert.equal(matchDay('domenica'), 6);
+  assert.equal(matchDay('salmone'), -1);
+});
+
+test('meal labels: garbled handwriting', () => {
+  for (const t of ['PRANZO:', 'PRANID-', 'PRAND-', 'Pramo:', 'Promo.', 'lunch', 'Déjeuner']) assert.equal(matchMeal(t), 'lunch', t);
+  for (const t of ['CENA:', 'CEMA', 'Cenk:', 'dinner', 'Abendessen', 'jantar']) assert.equal(matchMeal(t), 'dinner', t);
+  assert.equal(matchMeal('pasta'), null);
+  assert.equal(matchMeal('carne'), null);
+});
+
+test('parsePlan: clean text with headings', () => {
+  const days = parsePlan('Meal plan\nMonday\nPRANZO: pasta al pesto\nCENA: carne e insalata\nTuesday\nPRANZO: farro\nCENA: pizza\nNotes');
+  assert.deepEqual(days[0], { lunch: 'pasta al pesto', dinner: 'carne e insalata' });
+  assert.deepEqual(days[1], { lunch: 'farro', dinner: 'pizza' });
+  assert.deepEqual(days[2], { lunch: '', dinner: '' });
+});
+
+test('parsePlan: missing headings, a repeated lunch label starts the next day', () => {
+  const days = parsePlan('PRANZO: a1\nCENA: a2\nPRANID: b1\nCEMA: b2\nThursday\nPRANZO: d1\nCENA: d2\nPRANZO: e1');
+  assert.deepEqual(days.slice(0, 5), [
+    { lunch: 'a1', dinner: 'a2' }, { lunch: 'b1', dinner: 'b2' }, { lunch: '', dinner: '' },
+    { lunch: 'd1', dinner: 'd2' }, { lunch: 'e1', dinner: '' },
+  ]);
+});
+
+test('parsePlan: unlabelled block, first line lunch, rest dinner', () => {
+  const days = parsePlan('Lunedì\nrisotto\npolpette\nspinaci\nMartedì\nPranzo: pesto');
+  assert.deepEqual(days[0], { lunch: 'risotto', dinner: 'polpette spinaci' });
+  assert.equal(days[1].lunch, 'pesto');
+});
+
+test('correctDish: common handwriting misreads', () => {
+  assert.equal(correctDish('pesce 2 patate').text, 'pesce e patate');
+  assert.equal(correctDish('carne e 2ucchine').text, 'carne e zucchine');
+  assert.equal(correctDish('N20: passato verdure').text, 'passato verdure');
+  assert.equal(correctDish('omelette | mozzarella').text, 'omelette / mozzarella');
+  assert.equal(correctDish('caprese i i').text, 'caprese');
+  assert.equal(correctDish('scamorza e insalata').score > correctDish('Scamona e Salve').score, true);
+});
+
+test('snapDish: remembered dishes', () => {
+  assert.equal(snapDish('specke zucchme', ['speck e zucchine', 'pasta al sugo']), 'speck e zucchine');
+  assert.equal(snapDish('carbonara', ['speck e zucchine']), 'carbonara');
+});
+
+test('findLayout: places all 14 rows from label boxes, fills a missed label', () => {
+  const word = (text, x0, y) => ({ text, confidence: 90, bbox: { x0, y0: y - 15, x1: x0 + 120, y1: y + 15 } });
+  const words = [];
+  for (let d = 0; d < 7; d++) {
+    const y = 300 + d * 250;
+    words.push(word(['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'][d], 300, y));
+    if (d !== 3) words.push(word('Pranzo:', 300, y + 90));
+    words.push(word('Cena:', 300, y + 180));
+    words.push(word('zucchine', 700, y + 180)); // dish text must not count as a label
+  }
+  const rows = findLayout(words, 1238);
+  assert.equal(rows.length, 14);
+  const thuLunch = rows.find((r) => r.day === 3 && r.slot === 'lunch');
+  assert.equal(thuLunch.found, false);
+  assert.ok(Math.abs(thuLunch.y - (300 + 3 * 250 + 90)) < 15);
+  assert.ok(rows.filter((r) => r.found).every((r) => r.x0 === 300));
+});
+
+test('fold: 75-octet lines, never splits UTF-8', () => {
+  const line = `SUMMARY:${'è'.repeat(60)}`;
+  const parts = fold(line).split('\r\n');
+  for (const p of parts) assert.ok(new TextEncoder().encode(p).length <= 75);
+  assert.equal(parts.map((p, i) => (i ? p.slice(1) : p)).join(''), line);
+});
+
+test('buildICS: floating times, escaping, skipped empties, stable UIDs', () => {
+  const days = Array.from({ length: 7 }, () => ({ lunch: '', dinner: '' }));
+  days[0] = { lunch: 'pasta, sugo; basilico \\ olio', dinner: '' };
+  days[6] = { lunch: 'risotto', dinner: 'pizza' };
+  const opts = { lunchTime: '12:30', dinnerTime: '19:00', lunchMin: 45, dinnerMin: 60 };
+  const a = buildICS(days, '2026-10-26', opts, new Date(Date.UTC(2026, 9, 23, 10)));
+  const b = buildICS(days, '2026-10-26', opts, new Date(Date.UTC(2026, 9, 24, 10)));
+  assert.ok(a.endsWith('\r\n') && !/[^\r]\n/.test(a));
+  assert.equal((a.match(/BEGIN:VEVENT/g) || []).length, 3);
+  assert.match(a, /SUMMARY:Lunch: pasta\\, sugo\\; basilico \\\\ olio/);
+  assert.match(a, /DTSTART:20261026T123000\r\nDTEND:20261026T131500/);
+  assert.match(a, /UID:meal-2026-11-01-dinner@mealplan-scanner\r\nDTSTAMP:\d{8}T\d{6}Z\r\nDTSTART:20261101T190000\r\nDTEND:20261101T200000/);
+  assert.doesNotMatch(a, /DTSTART:\d{8}T\d{6}Z/);
+  const uids = (s) => s.match(/UID:.*/g);
+  assert.deepEqual(uids(a), uids(b));
+});
+
+test('CTC decoding: model probabilities pick the vocabulary word', async () => {
+  const { ctcLogP, greedyWords, decodeLine } = await import('../app/ocr.js');
+  // Frames that read "came" on the best path, but leave room for "carne".
+  const frames = [{ c: 0.9, '': 0.1 }, { a: 0.9, '': 0.1 }, { m: 0.5, r: 0.4, '': 0.1 }, { '': 0.5, n: 0.4, m: 0.1 }, { e: 0.9, '': 0.1 },
+    { ' ': 0.9, '': 0.1 }, { e: 0.9, '': 0.1 }];
+  assert.deepEqual(greedyWords(frames).map((w) => w.word), ['came', 'e']);
+  assert.ok(ctcLogP(frames, 'carne e') > ctcLogP(frames, 'xyz e'));
+  assert.equal(decodeLine(frames, { vocab: ['carne', 'pesce'] }), 'carne');
+  assert.equal(decodeLine(frames, { vocab: ['carne'], dishes: ['carne e insalata', 'came e'] }), 'came e');
+});
+
+test('Google Calendar event ids: stable and base32hex', async () => {
+  const { eventId } = await import('../app/gcal.js');
+  assert.equal(eventId(new Date(2026, 9, 26), 'lunch'), 'meal20261026l');
+  assert.equal(eventId(new Date(2026, 10, 1), 'dinner'), 'meal20261101d');
+  assert.match(eventId(new Date(2026, 0, 5), 'dinner'), /^[a-v0-9]{5,}$/);
+});

@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meal Plan Scanner</title>
+<meta name="description" content="Photograph your handwritten weekly meal plan and add it to your calendar.">
+<meta name="theme-color" content="#f2f6f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121a15" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Meal Plan">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2f6f0; --surface: #fcfefb; --text: #1c2a21; --muted: #56685b; --line: #d6e3d6;
+    --accent: #2e7d4f; --accent-text: #ffffff; --accent-soft: #dcefe1; --focus: #2f6fdb; --error: #b3261e;
+    --radius: 14px;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121a15; --surface: #1b251e; --text: #e3eee6; --muted: #9db3a3; --line: #2c3b31;
+      --accent: #7dcd98; --accent-text: #0b2414; --accent-soft: #22382a; --focus: #8ab4ff; --error: #f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 0 4px; }
+  header img { width: 36px; height: 36px; border-radius: 9px; }
+  h1 { font-size: 1.35rem; margin: 0; }
+  h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  [hidden] { display: none !important; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin: 16px 0; }
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    min-height: 56px; padding: 12px 18px; border-radius: var(--radius); border: 1px solid var(--line);
+    background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+    text-decoration: none;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .btn + .btn, input + .btn { margin-top: 10px; }
+  .btn svg { width: 24px; height: 24px; flex: none; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; margin-top: 0 !important; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  progress { width: 100%; height: 12px; accent-color: var(--accent); }
+  #status { font-weight: 600; margin-bottom: 8px; }
+
+  .day { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+  .day:first-child { border-top: 0; padding-top: 0; }
+  .day h3 { font-size: .95rem; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+  .meal { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .meal label { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .dish {
+    width: 100%; min-height: 48px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font: 1.3rem/1.2 "Patrick Hand", "Comic Sans MS", cursive;
+  }
+  .dish:focus-visible { outline-offset: 0; }
+
+  .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .settings label { display: grid; gap: 4px; font-size: .9rem; color: var(--muted); }
+  .settings .wide { grid-column: 1 / -1; }
+  .settings input, .settings select {
+    min-height: 48px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font: inherit; width: 100%;
+  }
+  details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; font-weight: 600; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: ""; flex: none; width: 8px; height: 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; }
+  details[open] > summary::before { transform: rotate(45deg); }
+  .linklike { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; min-height: 44px; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: .8rem; background: var(--bg); padding: 10px; border-radius: 10px; margin: 8px 0 0; max-height: 50vh; overflow: auto; }
+  .notice { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
+  .error { color: var(--error); font-weight: 600; }
+  ol { padding-left: 1.2em; margin: 0 0 8px; }
+  li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icon-192.png" alt="">
+    <h1>Meal Plan Scanner</h1>
+  </header>
+
+  <section id="capture" class="card" aria-labelledby="capture-title">
+    <h2 id="capture-title">Scan this week's plan</h2>
+    <p class="muted">Take a photo of the whole page, straight on and in good light. Everything stays on your phone.</p>
+    <label class="btn primary" for="camera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="4"/></svg>
+      Take photo
+    </label>
+    <input id="camera" type="file" accept="image/*" capture="environment">
+    <label class="btn" for="gallery">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
+      Choose photo
+    </label>
+    <input id="gallery" type="file" accept="image/*">
+    <p class="muted" style="margin:12px 0 0">Or <button type="button" id="manual" class="linklike">type the week in by hand</button>.</p>
+  </section>
+
+  <section id="working" class="card" hidden aria-live="polite">
+    <div id="status">Preparing…</div>
+    <progress id="bar" max="1" value="0"></progress>
+    <p class="muted" style="margin:10px 0 0">This takes a few seconds. Keep the app open.</p>
+  </section>
+
+  <section id="review" hidden aria-labelledby="review-title">
+    <div class="card">
+      <h2 id="review-title">Check the meals</h2>
+      <p class="notice" id="review-note">Handwriting is hard to read: fix anything that's wrong. Empty meals are skipped.</p>
+      <div class="settings" style="margin-bottom:12px">
+        <label class="wide">Week starting (Monday)
+          <input type="date" id="weekStart" required>
+        </label>
+      </div>
+      <div id="days"></div>
+    </div>
+
+    <div class="card">
+      <button class="btn primary" id="gsync" type="button" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 12v6M9 15h6"/></svg>
+        Add to Google Calendar
+      </button>
+      <div class="settings" id="calPick" hidden style="margin-top:10px">
+        <label class="wide">Calendar <select id="calendar"></select></label>
+      </div>
+      <button class="btn" id="save" type="button">Download .ics file</button>
+      <p id="saved" class="muted" style="margin:12px 0 0" hidden aria-live="polite"></p>
+      <button type="button" id="otherCal" class="linklike" hidden>Use a different calendar</button>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Times</summary>
+        <div class="settings">
+          <label>Lunch at <input type="time" id="lunchTime" value="12:30"></label>
+          <label>Lunch minutes <input type="number" id="lunchMin" value="45" min="5" max="600" step="5" inputmode="numeric"></label>
+          <label>Dinner at <input type="time" id="dinnerTime" value="19:00"></label>
+          <label>Dinner minutes <input type="number" id="dinnerMin" value="60" min="5" max="600" step="5" inputmode="numeric"></label>
+        </div>
+      </details>
+      <details>
+        <summary>What the scan read</summary>
+        <pre id="raw"></pre>
+      </details>
+    </div>
+
+    <button class="btn" id="again" type="button">Scan another photo</button>
+  </section>
+
+  <p id="error" class="error" role="alert" hidden></p>
+  <datalist id="known"></datalist>
+</main>
+
+<script type="module">
+import Tesseract from 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js';
+import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs';
+import { scanPlan, buildICS, DAY_KEYS } from './lib.js';
+import { createRecognizer, decoderFor } from './ocr.js';
+import { CLIENT_ID, loadGis, signIn, calendars, syncWeek } from './gcal.js';
+
+// Single-threaded WASM: GitHub Pages can't send the headers threads need, and it's gentle on memory.
+ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+ort.env.wasm.numThreads = 1;
+const MODEL = 'models/latin_PP-OCRv5_mobile_rec';
+
+const $ = (id) => document.getElementById(id);
+const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// ---- storage (never fatal: private mode, quota...) ----
+const store = {
+  get(k, def) { try { const v = localStorage.getItem(`mealplan.${k}`); return v == null ? def : JSON.parse(v); } catch { return def; } },
+  set(k, v) { try { localStorage.setItem(`mealplan.${k}`, JSON.stringify(v)); } catch {} },
+};
+
+const TIME_FIELDS = ['lunchTime', 'lunchMin', 'dinnerTime', 'dinnerMin'];
+for (const id of TIME_FIELDS) {
+  const v = store.get(id);
+  if (v != null) $(id).value = v;
+  $(id).addEventListener('change', () => store.set(id, $(id).value));
+}
+
+// Dishes the user confirmed before: autocomplete + OCR correction.
+const dishes = () => store.get('dishes', []);
+function rememberDishes(list) {
+  const seen = new Set(), out = [];
+  for (const d of [...list, ...dishes()]) { const k = d.trim().toLowerCase(); if (k && !seen.has(k)) { seen.add(k); out.push(d.trim()); } }
+  store.set('dishes', out.slice(0, 400));
+}
+const fillKnown = () => { $('known').replaceChildren(...dishes().map((d) => Object.assign(document.createElement('option'), { value: d }))); };
+
+// ---- dates ----
+const pad = (n) => String(n).padStart(2, '0');
+const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+function nextMonday() {
+  const d = new Date();
+  d.setDate(d.getDate() + ((8 - d.getDay()) % 7)); // today if Monday
+  return iso(d);
+}
+function dayDate(i) {
+  const [y, m, d] = $('weekStart').value.split('-').map(Number);
+  return new Date(y, m - 1, d + i).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+// ---- screens ----
+function show(id) {
+  for (const s of ['capture', 'working', 'review']) $(s).hidden = s !== id;
+  $('error').hidden = true;
+  window.scrollTo(0, 0);
+}
+function fail(msg) { show('capture'); $('error').textContent = msg; $('error').hidden = false; }
+
+function renderReview(days, raw, note) {
+  $('weekStart').value ||= nextMonday();
+  fillKnown();
+  $('days').replaceChildren(...days.map((d, i) => {
+    const el = document.createElement('div');
+    el.className = 'day';
+    el.innerHTML = `<h3>${DAY_LABELS[i]} <span class="date"></span></h3>` + ['lunch', 'dinner'].map((slot) => `
+      <div class="meal">
+        <label for="${DAY_KEYS[i]}-${slot}">${slot}</label>
+        <input class="dish" id="${DAY_KEYS[i]}-${slot}" list="known" autocomplete="off" autocapitalize="none" spellcheck="false"
+          aria-label="${DAY_LABELS[i]} ${slot}">
+      </div>`).join('');
+    el.querySelector(`#${DAY_KEYS[i]}-lunch`).value = d.lunch;
+    el.querySelector(`#${DAY_KEYS[i]}-dinner`).value = d.dinner;
+    return el;
+  }));
+  document.querySelectorAll('.dish').forEach((el) => el.addEventListener('input', () => { el.dataset.edited = '1'; }, { once: true }));
+  updateDates();
+  $('raw').textContent = raw || '(nothing scanned)';
+  $('review-note').textContent = note;
+  $('saved').hidden = true;
+  show('review');
+}
+function updateDates() {
+  if (!$('weekStart').value) return;
+  document.querySelectorAll('.day .date').forEach((el, i) => { el.textContent = `· ${dayDate(i)}`; });
+}
+$('weekStart').addEventListener('change', updateDates);
+
+const readDays = () => DAY_KEYS.map((k) => ({ lunch: $(`${k}-lunch`).value.trim(), dinner: $(`${k}-dinner`).value.trim() }));
+
+// ---- scanning ----
+const STATUS = {
+  'loading tesseract core': 'Starting the text reader',
+  'initializing tesseract': 'Starting the text reader',
+  'loading language traineddata': 'Downloading language data (first time only)',
+  'initializing api': 'Starting the text reader',
+};
+
+async function loadPhoto(file) {
+  const bmp = await createImageBitmap(file); // applies EXIF orientation
+  const s = 2200 / Math.max(bmp.width, bmp.height);
+  const w = Math.round(bmp.width * s), h = Math.round(bmp.height * s);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bmp, 0, 0, w, h);
+  bmp.close?.();
+  return { rgba: ctx.getImageData(0, 0, w, h).data, w, h };
+}
+
+async function scan(file) {
+  show('working');
+  const status = (t, p) => { $('status').textContent = t; if (p != null) $('bar').value = p; };
+  status('Opening photo', 0);
+  let worker, rec, lock;
+  try {
+    lock = await navigator.wakeLock?.request('screen').catch(() => null);
+    const { rgba, w, h } = await loadPhoto(file);
+    status('Loading the handwriting reader', 0.02);
+    const [model, dict] = await Promise.all([
+      fetch(`${MODEL}.onnx`).then((r) => r.arrayBuffer()),
+      fetch(`${MODEL}.dict.json`).then((r) => r.json()),
+    ]);
+    rec = await createRecognizer(ort, model, dict, { logSeverityLevel: 3 });
+    worker = await Tesseract.createWorker('ita+eng', 1, {
+      logger: (m) => { if (STATUS[m.status]) status(STATUS[m.status], m.status.startsWith('loading language') ? m.progress * 0.1 : null); },
+    });
+    const recognize = async (pgm, psm, withWords) => {
+      await worker.setParameters({ tessedit_pageseg_mode: psm });
+      const { data } = await worker.recognize(new Blob([pgm]), {}, { text: true, blocks: withWords });
+      const words = withWords ? (data.blocks || []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words))) : [];
+      return { text: data.text, conf: data.confidence, words };
+    };
+    const res = await scanPlan(rgba, w, h, recognize, {
+      dishes: dishes(),
+      readLine: (img) => rec.recognize(img),
+      decode: decoderFor(dishes()),
+      onProgress: (p, msg) => status(msg, 0.1 + 0.9 * p),
+    });
+    const raw = res.layout
+      ? res.reads.map((r) => `${DAY_LABELS[r.day]} ${r.slot}${r.found ? '' : ' (no label seen)'}: ${r.tries.map((t) => t.text).join(' | ') || '(blank)'}`).join('\n')
+      : res.reads[0].text;
+    const found = res.days.reduce((n, d) => n + !!d.lunch + !!d.dinner, 0);
+    renderReview(res.days, raw, res.layout
+      ? 'Handwriting is hard to read: fix anything that\'s wrong. Empty meals are skipped.'
+      : `Couldn't find the PRANZO / CENA layout (${found} meals guessed). Try a straighter photo of the whole page, or fix the meals here.`);
+  } catch (e) {
+    console.error(e);
+    fail(`Scanning failed: ${e.message || e}. Check your connection the first time (the text reader is downloaded once).`);
+  } finally {
+    await worker?.terminate(); // frees ~100 MB of WebAssembly memory
+    await rec?.release();
+    lock?.release?.();
+  }
+}
+
+for (const id of ['camera', 'gallery']) $(id).addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (f) scan(f);
+});
+$('manual').addEventListener('click', () => renderReview(DAY_KEYS.map(() => ({ lunch: '', dinner: '' })), '', 'Type the meals for the week. Empty meals are skipped.'));
+$('again').addEventListener('click', () => show('capture'));
+
+// ---- export ----
+const times = () => ({
+  lunchTime: $('lunchTime').value || '12:30', dinnerTime: $('dinnerTime').value || '19:00',
+  lunchMin: +$('lunchMin').value || 45, dinnerMin: +$('dinnerMin').value || 60,
+});
+const say = (t) => { $('saved').textContent = t; $('saved').hidden = false; };
+function week() {
+  if (!$('weekStart').value) { $('weekStart').focus(); throw new Error('Pick the week start date first.'); }
+  return $('weekStart').value;
+}
+// Only what the user typed or fixed: unedited OCR guesses could be wrong and would be learned.
+const learn = () => rememberDishes([...document.querySelectorAll('.dish[data-edited]')].map((el) => el.value.trim()).filter(Boolean));
+const count = (days) => days.reduce((a, d) => a + !!d.lunch + !!d.dinner, 0);
+const meals = (n) => `${n} meal${n === 1 ? '' : 's'}`;
+
+$('save').addEventListener('click', () => {
+  try {
+    const ws = week(), days = readDays();
+    const file = new File([buildICS(days, ws, times())], `meal-plan-${ws}.ics`, { type: 'text/calendar' });
+    const url = URL.createObjectURL(file);
+    Object.assign(document.createElement('a'), { href: url, download: file.name }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    learn();
+    say(`${meals(count(days))} saved to ${file.name}.`);
+  } catch (e) { say(e.message); }
+});
+
+if (CLIENT_ID) {
+  $('gsync').hidden = false;
+  loadGis().catch(() => {}); // ready before the tap, so the sign-in popup isn't blocked
+} else $('save').classList.add('primary');
+
+$('gsync').addEventListener('click', async () => {
+  $('gsync').disabled = true;
+  try {
+    const ws = week();
+    say('Connecting to Google…');
+    await signIn();
+    let cal = store.get('calendar');
+    if (!cal) {
+      const list = await calendars();
+      if (!list.length) throw new Error('No Google calendar you can add events to.');
+      if ($('calPick').hidden) {
+        $('calendar').replaceChildren(...list.map((c) => new Option(c.primary ? `${c.summary} (personal)` : c.summary, c.id)));
+        $('calendar').value = (list.find((c) => !c.primary) || list[0]).id; // shared calendars first
+        $('calPick').hidden = false;
+        if (list.length > 1) { say('Pick the calendar, then tap “Add to Google Calendar” again.'); return; }
+      }
+      cal = $('calendar').value;
+      store.set('calendar', cal);
+    }
+    say('Adding the meals…');
+    const { saved, removed } = await syncWeek(cal, readDays(), ws, times());
+    learn();
+    $('calPick').hidden = true;
+    $('otherCal').hidden = false;
+    say(`Done: ${meals(saved)} in your calendar${removed ? `, ${removed} removed` : ''}. Syncing this week again updates them.`);
+  } catch (e) {
+    if (e.status === 404) store.set('calendar', null);
+    say(e.status === 404 ? 'That calendar is gone. Tap again to pick another.' : e.message);
+  } finally { $('gsync').disabled = false; }
+});
+$('otherCal').addEventListener('click', () => { store.set('calendar', null); $('otherCal').hidden = true; say('Tap “Add to Google Calendar” to pick a calendar.'); });
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>

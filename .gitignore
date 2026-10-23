@@ -1,0 +1,4 @@
+node_modules/
+__pycache__/
+# Photos, transcriptions, real OCR output, training data: never committed or published.
+private/

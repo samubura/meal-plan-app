@@ -1,0 +1,14 @@
+{
+  "name": "meal-plan-scanner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/",
+    "bench": "node tools/ocr-bench.mjs"
+  },
+  "devDependencies": {
+    "jpeg-js": "0.4.4",
+    "onnxruntime-node": "^1.30.0",
+    "tesseract.js": "7.0.0"
+  }
+}
