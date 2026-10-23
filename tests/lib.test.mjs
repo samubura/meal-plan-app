@@ -171,7 +171,7 @@ test('history: categories, statistics, calendar recovery', async () => {
   const { categorize, historyStats, mergeCalendarMeals } = await import('../app/lib.js');
   assert.deepEqual([...categorize('speck e zucchine')].sort(), ['salumi', 'verdure']);
   assert.deepEqual([...categorize('pasta al sugo + burger veg')].sort(), ['pasta', 'veg']);
-  assert.deepEqual([...categorize('findus e patate')].sort(), ['pesce', 'verdure']);
+  assert.deepEqual([...categorize('findus e purè di patate')].sort(), ['patate', 'pesce']);
   assert.deepEqual([...categorize('passato verdure + primo sale')].sort(), ['formaggi', 'verdure']);
   assert.deepEqual([...categorize('Ancona')], ['altro']);
   const week = (l, d) => ({ days: Array.from({ length: 7 }, () => [l, d]), source: 'app' });
