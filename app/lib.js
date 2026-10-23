@@ -339,7 +339,7 @@ export function pageRight(bin, w, h, xMin, y0, y1) {
 // Follow one handwritten line from (x0, y) to x1 and straighten it: the ink centre is tracked in
 // sliding windows (handwriting drifts up/down), then each column of src (default: bin) is
 // resampled around the track.
-export function traceRow(bin, w, h, x0, x1, y, half, src = bin) {
+export function traceRow(bin, w, h, x0, x1, y, half, src = bin, track = true) {
   x0 = Math.max(0, Math.round(x0)); x1 = Math.min(w, Math.round(x1));
   const step = 8, win = 48, centres = [];
   let c = y;
@@ -348,7 +348,7 @@ export function traceRow(bin, w, h, x0, x1, y, half, src = bin) {
     const ya = Math.max(0, Math.round(c - 0.8 * half)), yb = Math.min(h, Math.round(c + 0.8 * half));
     for (let yy = ya; yy < yb; yy++) for (let xx = x; xx < Math.min(x1, x + win); xx++)
       if (bin[yy * w + xx] === 0) { sum += yy; n++; }
-    if (n > win / 2) c = 0.75 * c + 0.25 * (sum / n);
+    if (track && n > win / 2) c = 0.75 * c + 0.25 * (sum / n);
     centres.push(c);
   }
   const ow = x1 - x0, oh = Math.round(2 * half), out = new Uint8Array(ow * oh).fill(255);
@@ -585,7 +585,9 @@ const ROW_VARIANTS = [['gray', 0.6], ['gray', 0.8], ['bin', 0.6], ['bin', 0.8]];
 // onBand(row, img): debug hook, gets every line image that is read.
 // decode: ocr.js decoderFor(dishes) (context-aware decoding of readLine's frames).
 // isUnsure: ocr.js unsure (flags meals to double-check).
-export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress = () => {}, readLine, decode, isUnsure, lineVariants = ['gray'], onBand, tight = {} } = {}) {
+// continuation: also read the strip under each dinner (a dish that wraps onto a second line). Under a
+// lunch it would pick up the dinner line, so only dinners (measured on private/dataset).
+export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress = () => {}, readLine, decode, isUnsure, lineVariants = ['gray'], onBand, tight = {}, continuation = true } = {}) {
   const variants = readLine ? lineVariants : ROW_VARIANTS;
   let total = 2 + 14 * variants.length, done = 0;
   const tick = (msg, n = 1) => onProgress(Math.min(1, (done += n) / total), msg);
@@ -640,7 +642,19 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
       tries.push({ text: text.trim(), conf });
       tick(label);
     }
-    reads.push({ day: r.day, slot: r.slot, found: r.found, ink: +ink.toFixed(4), tries });
+    // The strip just under a dinner, where it continues when it doesn't fit: beside the next day's
+    // printed heading, so it starts right of where the heading ends.
+    let cont = null;
+    if (continuation && readLine && tries.length && r.slot === 'dinner') {
+      const cy = r.y + 0.23 * r.gap, ch = 0.1 * r.gap, cx = r.x0 + 0.16 * w;
+      const cbin = traceRow(bin, w, h, cx, right - 4, cy, ch, bin, false);
+      const cInk = cbin.gray.reduce((n, v) => n + (v === 0), 0) / cbin.gray.length;
+      if (cInk > 0.01) {
+        const band = tighten(cbin, traceRow(bin, w, h, cx, right - 4, cy, ch, gray, false), tight || {});
+        if (band) cont = await readLine(band);
+      }
+    }
+    reads.push({ day: r.day, slot: r.slot, found: r.found, ink: +ink.toFixed(4), tries, ...(cont && { cont }) });
   }
   const days = daysFromReads(reads, dishes, { decode });
   // Meals worth a second look (needs ocr.js's decoder, which knows the vocabulary).
@@ -651,16 +665,30 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
 
 const decodeText = (decode, t, vocab, dishes, k) => decode(t.frames, { vocab, dishes, original: t.text, ...(k && { k }) });
 
+// A second line is kept only when it looks like more of the dish: the reader is sure, it has a known
+// word, it isn't a day heading and it isn't the first line read again. CONT: tuned on private/dataset.
+export const CONT = { conf: 85 };
+function withContinuation(main, c, conf, lm, k = CONT) {
+  if (!c || conf < k.conf) return main;
+  const words = norm(c).match(/[a-z]{3,}/g) || [];
+  if (!words.some((w) => w.length >= 4 && lm.known(w)) || words.some((w) => matchDay(w, false) >= 0)) return main;
+  const a = norm(main), b = norm(c);
+  if (a.includes(b) || 1 - lev(a, b) / Math.max(a.length, b.length, 1) > 0.5) return main;
+  return main ? `${main} ${c}` : c;
+}
+
 // reads (from scanPlan) -> days. Kept separate so tools can re-run it on saved readings.
 // decode: ocr.js decoderFor(dishes), for readings that carry the recognizer's frames.
-export function daysFromReads(reads, dishes = [], { k = PICK, decode, dk } = {}) {
+export function daysFromReads(reads, dishes = [], { k = PICK, decode, dk, cont } = {}) {
   const vocab = vocabFor(dishes);
   const days = DAY_KEYS.map(() => ({ lunch: '', dinner: '' }));
   for (const r of reads) {
     const t = r.tries[0];
-    days[r.day][r.slot] = decode && t?.frames
+    let text = decode && t?.frames
       ? decodeText(decode, t, vocab, dishes, dk)
       : snapDish(pickDish(r.tries, vocab, k), dishes);
+    if (r.cont && decode?.lm) text = withContinuation(text, decodeText(decode, r.cont, vocab, dishes, dk), r.cont.conf, decode.lm, cont);
+    days[r.day][r.slot] = text;
   }
   // A day with no labels and a single line ("ROMA") means the whole day.
   for (let d = 0; d < 7; d++) {

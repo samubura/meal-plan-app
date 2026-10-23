@@ -84,11 +84,13 @@ only gets the dishes from the *other* pages.
 | + lines cropped to the ink | 189 | 108 | 110 |
 | + decoding with the model's probabilities | 187 | 122 (62%) | 134 |
 | + word-pair model from your dishes | 190 (97%) | 122 (62%) | 139 (71%) |
-| + slash handling, scored slash-aware (shipped) | 189 (96%) | 118 (60%) | **136 (69%)** |
+| + slash handling, scored slash-aware | 189 (96%) | 118 (60%) | 136 (69%) |
+| + second line under dinners (shipped) | 189 (96%) | 119 (61%) | **136 (69%)** |
 
 The last row uses stricter scoring: "pizza mamma" no longer counts as "pizza / mamma". Dishes written
 with a "/" went from 0/24 exact to 7/24 (11/24 with remembered dishes). Turned photos give the same
-results as upright ones.
+results as upright ones. Meals the reader is unsure about are highlighted in the review (about a third
+of the meals, holding ~60% of the ones that need fixing).
 
 Measured and **not** shipped:
 - **Fine-tuning the recognizer on these pages** (`tools/train/`, 4-fold cross-validation on unseen pages):

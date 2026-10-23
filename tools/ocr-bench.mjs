@@ -49,7 +49,7 @@ await Promise.all(workers.map(async (w) => {
   for (let f; (f = queue.shift());) {
     const { rgba, w: W, h: H } = load(f);
     const t0 = Date.now();
-    const r = await scanPlan(rgba, W, H, wrap(w), { readLine, decode, ...(lineVariants && { lineVariants }), tight });
+    const r = await scanPlan(rgba, W, H, wrap(w), { readLine, decode, ...(lineVariants && { lineVariants }), tight, continuation: !process.argv.includes('--no-cont') });
     if (personal) r.days = daysFromReads(r.reads, others(f), { decode: decode && decoderFor(others(f)) });
     results.push({ f, ...r, ms: Date.now() - t0, ...score(r.days, truth[f]) });
   }
