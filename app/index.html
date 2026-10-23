@@ -784,7 +784,7 @@ async function scan(file) {
     if (key && navigator.onLine !== false) {
       status('Leggo con Gemini…', 0.05);
       try {
-        const g = await withTimeout(readPlanWithGemini(key, jpegFor(canvas), { dishes: dishes() }), 45000);
+        const g = await withTimeout(readPlanWithGemini(key, jpegFor(canvas), { dishes: dishes() }), 50000); // 3 models x 15 s at most
         if (!g.days.some((d) => d.lunch || d.dinner)) throw new Error('Gemini non ha trovato pasti');
         openReview(g.days, `Letto con Gemini (${g.model.replace('models/', '')}).`, 'Letto con Gemini. Controlla comunque i pasti prima di salvare.');
         return;

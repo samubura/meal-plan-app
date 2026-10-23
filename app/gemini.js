@@ -5,8 +5,14 @@
 const API = 'https://generativelanguage.googleapis.com/v1beta';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-async function call(key, path, init = {}) {
-  const res = await fetch(`${API}${path}`, { ...init, headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json', ...init.headers } });
+async function call(key, path, init = {}, timeout = 15000) {
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, { ...init, signal: AbortSignal.timeout(timeout), headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json', ...init.headers } });
+  } catch (e) {
+    // No answer in time (an overloaded model can hang): treated like "busy", the next model is tried.
+    throw Object.assign(new Error(e.name === 'TimeoutError' ? 'Gemini non ha risposto in tempo' : 'Gemini non raggiungibile'), { status: e.name === 'TimeoutError' ? 504 : 0 });
+  }
   if (!res.ok) {
     let msg = '';
     try { msg = (await res.json()).error?.message || ''; } catch {}
@@ -15,9 +21,9 @@ async function call(key, path, init = {}) {
   return res.json();
 }
 
-// The newest "flash" model the key can use (models change name over time; the list is the truth).
-// Prefers full Flash over Flash-Lite, skips image/audio/preview-only variants when a stable one exists.
-export async function pickModel(key) {
+// The "flash" models the key can use, best first (models change name over time; the list is the truth).
+// Newest first, full Flash before Flash-Lite, image/audio/preview variants skipped or last.
+export async function flashModels(key) {
   const { models = [] } = await call(key, '/models?pageSize=200');
   const ok = models.filter((m) => m.supportedGenerationMethods?.includes('generateContent') && /gemini-[\d.]+-flash/.test(m.name)
     && !/image|audio|tts|live|thinking|embedding/.test(m.name));
@@ -25,8 +31,9 @@ export async function pickModel(key) {
   const rank = (m) => ver(m) * 10 - (/lite/.test(m.name) ? 3 : 0) - (/preview|exp/.test(m.name) ? 1 : 0);
   ok.sort((a, b) => rank(b) - rank(a));
   if (!ok.length) throw new Error('Gemini: nessun modello Flash disponibile con questa chiave');
-  return ok[0].name; // "models/…"
+  return ok.map((m) => m.name); // "models/…"
 }
+export const pickModel = async (key) => (await flashModels(key))[0];
 
 const SCHEMA = {
   type: 'object',
@@ -50,14 +57,27 @@ Transcribe exactly what is written for each meal, in Italian, as the writer wrot
 - if a meal is empty, return "".
 Return all 7 days.${dishes.length ? `\nDishes this family often writes (use the exact spelling when one matches what is written):\n${dishes.slice(0, 150).join('; ')}` : ''}`;
 
-// jpeg: base64 JPEG of the page; returns [{lunch, dinner}] x 7 (Monday first).
-export async function readPlanWithGemini(key, jpeg, { dishes = [], model } = {}) {
-  model ??= await pickModel(key);
+// jpeg: base64 JPEG of the page; returns {model, days: [{lunch, dinner}] x 7 (Monday first)}.
+// Busy (503), over its free limit (429, counted per model) or gone (404): the next Flash model is tried.
+// Each model gets `timeout` ms.
+export async function readPlanWithGemini(key, jpeg, { dishes = [], model, tries = 3, timeout = 15000 } = {}) {
+  const models = model ? [model] : (await flashModels(key)).slice(0, tries);
+  let err;
+  for (const m of models) {
+    try { return await readWith(key, m, jpeg, dishes, timeout); } catch (e) {
+      err = e;
+      if (![404, 429, 500, 503, 504].includes(e.status)) throw e;
+    }
+  }
+  throw err;
+}
+
+async function readWith(key, model, jpeg, dishes, timeout) {
   const body = {
     contents: [{ parts: [{ inline_data: { mime_type: 'image/jpeg', data: jpeg } }, { text: PROMPT(dishes) }] }],
     generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA },
   };
-  const r = await call(key, `/${model}:generateContent`, { method: 'POST', body: JSON.stringify(body) });
+  const r = await call(key, `/${model}:generateContent`, { method: 'POST', body: JSON.stringify(body) }, timeout);
   const text = r.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
   let data;
   try { data = JSON.parse(text); } catch { throw new Error('Gemini: risposta non valida'); }

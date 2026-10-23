@@ -18,13 +18,21 @@ const model = process.argv.find((a) => a.startsWith('--model='))?.slice(8) ?? aw
 console.log('model:', model);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Answers are cached per photo/mode/model, so a rerun doesn't send photos to Google again.
+const cacheFile = path.join(root, 'private', 'train', 'gemini-cache.json');
+const cache = fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, 'utf8')) : {};
 let slots = 0, exact = 0, simSum = 0, n = 0, out = [];
 for (const f of Object.keys(truth).filter((x) => !filter || x.includes(filter))) {
-  const jpeg = fs.readFileSync(path.join(dir, f)).toString('base64');
-  let res;
-  for (let attempt = 0; ; attempt++) {
-    try { res = await readPlanWithGemini(key, jpeg, { model, dishes: personal ? [...new Set(others(f))] : [] }); break; } catch (e) {
-      if (e.status === 429 && attempt < 4) { console.log('  rate limited, waiting 60 s'); await sleep(60_000); continue; }
+  const ck = `${f}|${personal ? 'personal' : 'plain'}|${model}`;
+  let res = cache[ck];
+  for (let attempt = 0; !res; attempt++) {
+    const jpeg = fs.readFileSync(path.join(dir, f)).toString('base64');
+    try {
+      res = await readPlanWithGemini(key, jpeg, { model, timeout: 90_000, dishes: personal ? [...new Set(others(f))] : [] });
+      cache[ck] = res; fs.writeFileSync(cacheFile, JSON.stringify(cache));
+      await sleep(13_000); // free tier: a few requests per minute
+    } catch (e) {
+      if ([429, 500, 503, 504].includes(e.status) && attempt < 5) { const w = 30 * 2 ** attempt; console.log(`  ${e.status}, waiting ${w} s`); await sleep(w * 1000); continue; }
       throw e;
     }
   }
@@ -35,7 +43,6 @@ for (const f of Object.keys(truth).filter((x) => !filter || x.includes(filter)))
     const want = truth[f][i][j];
     if (sim(d[k], want) < 1) out.push(`   ${f.slice(17, 30).padEnd(13)} ${i} ${k.padEnd(6)} got ${JSON.stringify(d[k]).padEnd(36)} want ${JSON.stringify(want)}`);
   }));
-  await sleep(13_000); // free tier: a few requests per minute
 }
 console.log(`TOTAL ${n} photos: slots ${slots}/${14 * n}, exact ${exact}/${14 * n}, sim ${(simSum / n).toFixed(3)}`);
 if (process.argv.includes('--log')) console.log(out.join('\n'));

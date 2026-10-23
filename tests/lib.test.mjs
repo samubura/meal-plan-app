@@ -136,7 +136,7 @@ test('rotateRGBA: quarter turns, and four of them are the identity', async () =>
 });
 
 test('Gemini reading: picks the newest Flash model, parses the plan, reports errors', async () => {
-  const { readPlanWithGemini, pickModel } = await import('../app/gemini.js');
+  const { readPlanWithGemini, pickModel, flashModels } = await import('../app/gemini.js');
   const real = globalThis.fetch;
   const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
   try {
@@ -152,6 +152,7 @@ test('Gemini reading: picks the newest Flash model, parses the plan, reports err
       return reply(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ days }) }] } }] });
     };
     assert.equal(await pickModel('k'), 'models/gemini-3.6-flash');
+    assert.deepEqual(await flashModels('k'), ['models/gemini-3.6-flash', 'models/gemini-3.5-flash-lite']);
     const r = await readPlanWithGemini('k', 'AAAA');
     assert.deepEqual(r.days[0], { lunch: 'pasta al pesto', dinner: 'pizza / mamma' });
     assert.deepEqual(r.days[6], { lunch: 'Roma', dinner: 'Roma' });
