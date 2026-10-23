@@ -18,6 +18,11 @@ Handwriting is read in the browser by a small PaddleOCR model.
    same events and removes the ones you emptied. ⋮ has the times, the calendar, the .ics download and
    what the scan read.
 
+**Optional: Gemini.** With a free Google AI Studio key (⋮ › *Lettura con Gemini*), photos are read by Gemini
+first, which is far more accurate on cursive. The photo is then sent to Google. If Gemini doesn't answer
+(free limit, no network, the plan changed, 45 s timeout) the app reads the photo on the phone as usual and
+says so: the app never depends on it. No card on the key means no charges are possible.
+
 Dishes you type or fix are remembered: they're suggested while typing and help the next scans read your
 writing. Android's back button closes sheets and screens like in a native app.
 

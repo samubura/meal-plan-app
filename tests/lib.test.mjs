@@ -134,3 +134,29 @@ test('rotateRGBA: quarter turns, and four of them are the identity', async () =>
   for (let k = 0; k < 4; k++) r = rotateRGBA(r.rgba, r.w, r.h, 1);
   assert.deepEqual(red(r), [0, 1, 2, 3, 4, 5]);
 });
+
+test('Gemini reading: picks the newest Flash model, parses the plan, reports errors', async () => {
+  const { readPlanWithGemini, pickModel } = await import('../app/gemini.js');
+  const real = globalThis.fetch;
+  const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
+  try {
+    globalThis.fetch = async (url, init) => {
+      if (url.includes('/models?')) return reply(200, { models: [
+        { name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.6-flash-image', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/text-embedding-9', supportedGenerationMethods: ['embedContent'] }] });
+      assert.match(url, /gemini-3\.6-flash:generateContent$/);
+      assert.equal(init.headers['x-goog-api-key'], 'k');
+      const days = [{ day: 'monday', lunch: 'pasta  al  pesto', dinner: 'pizza/mamma' }, { day: 'sunday', lunch: 'Roma', dinner: 'Roma' }];
+      return reply(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ days }) }] } }] });
+    };
+    assert.equal(await pickModel('k'), 'models/gemini-3.6-flash');
+    const r = await readPlanWithGemini('k', 'AAAA');
+    assert.deepEqual(r.days[0], { lunch: 'pasta al pesto', dinner: 'pizza / mamma' });
+    assert.deepEqual(r.days[6], { lunch: 'Roma', dinner: 'Roma' });
+    assert.deepEqual(r.days[3], { lunch: '', dinner: '' });
+    globalThis.fetch = async () => reply(429, { error: { message: 'Quota exceeded' } });
+    await assert.rejects(readPlanWithGemini('k', 'AAAA', { model: 'models/x' }), (e) => e.status === 429);
+  } finally { globalThis.fetch = real; }
+});

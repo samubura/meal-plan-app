@@ -135,6 +135,30 @@ with sync_playwright() as p:
     print('page errors:', errors or 'none')
     ctx.close()
 
+    # Optional Gemini reading (mocked): used when it answers, on-phone fallback when it fails.
+    for mode in ('ok', 'quota'):
+        ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+        page = ctx.new_page()
+        def gem(route, *_, mode=mode):  # Playwright may pass the request as 2nd argument
+            if '/models?' in route.request.url:
+                return route.fulfill(json={'models': [{'name': 'models/gemini-3.6-flash', 'supportedGenerationMethods': ['generateContent']}]})
+            if mode == 'quota':
+                return route.fulfill(status=429, json={'error': {'message': 'Quota exceeded'}})
+            days = [{'day': d, 'lunch': 'speck e zucchine', 'dinner': 'Toscana / mamma'} for d in ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')]
+            return route.fulfill(json={'candidates': [{'content': {'parts': [{'text': json.dumps({'days': days})}]}}]})
+        page.route('https://generativelanguage.googleapis.com/**', gem)
+        page.goto(url); page.evaluate('localStorage.setItem("mealplan.geminiKey", JSON.stringify("test-key"))'); page.reload()
+        page.wait_for_selector('#scan:not([hidden])')
+        page.set_input_files('#gallery', str(photo))
+        page.wait_for_selector('#review:not([hidden])', timeout=300_000)
+        note, mon = page.text_content('#reviewNote'), page.input_value('#r-mon-lunch')
+        if mode == 'ok':
+            assert note.startswith('Letto con Gemini') and mon == 'speck e zucchine' and page.input_value('#r-mon-dinner') == 'Toscana / mamma', (note, mon)
+        else:
+            assert note.startswith('Gemini non disponibile (limite gratuito raggiunto)') and mon and mon != 'speck e zucchine', (note, mon)
+        print(f'gemini {mode}: ok ({note[:60]}…)')
+        ctx.close()
+
     # Dark mode, same plan.
     ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, color_scheme='dark', is_mobile=True, has_touch=True)
     page = ctx.new_page()

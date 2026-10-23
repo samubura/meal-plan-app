@@ -17,6 +17,9 @@ The user is Italian (talks to me in Italian) and uses an Android phone; UI is It
   - `ocr.js`: PP-OCRv5 Latin recognizer (`createRecognizer(ort, model, dict)`), CTC helpers
     (`toFrames`, `ctcLogP` with a slash class, `greedyWords`), `decodeLine` (word-pair model `makeLM`,
     slash inference) and `decoderFor(dishes)` = what the app uses.
+  - `gemini.js`: optional reading with the user's own AI Studio key (settings; photo sent to Google). `pickModel`
+    lists the key's models and takes the newest Flash; `readPlanWithGemini` uses a JSON schema. Any failure or
+    45 s timeout -> the on-phone pipeline. `tools/gemini-bench.mjs` (key in `private/gemini.key`).
   - `gcal.js`: Google Identity Services token client + Calendar API upsert (`syncWeek`, ids `meal<yyyymmdd><l|d>`).
     `CLIENT_ID` is empty until the user does the README setup; the button is hidden while empty.
   - `models/latin_PP-OCRv5_mobile_rec.{onnx,dict.json}` (from HF nakamura196/ppocrv5-mobile-web-onnx, Apache-2.0).

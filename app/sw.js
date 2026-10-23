@@ -1,7 +1,7 @@
 // App shell network-first (new deploys show up, cache when offline); CDN files (tesseract.js, its wasm core, fonts) stale-while-revalidate.
 // Tesseract keeps the language data in IndexedDB itself, so after one scan it works offline.
-const SHELL = 'shell-v6', CDN = 'cdn-v1';
-const FILES = ['./', 'index.html', 'lib.js', 'ocr.js', 'gcal.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const SHELL = 'shell-v7', CDN = 'cdn-v1';
+const FILES = ['./', 'index.html', 'lib.js', 'ocr.js', 'gcal.js', 'gemini.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 const MODELS = 'models-v1'; // models/ is cache-first: 8 MB, changes only with a new file name or MODELS bump
 
 self.addEventListener('install', (e) => e.waitUntil(caches.open(SHELL).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())));
