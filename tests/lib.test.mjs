@@ -90,7 +90,7 @@ test('buildICS: floating times, escaping, skipped empties, stable UIDs', () => {
   const b = buildICS(days, '2026-10-26', opts, new Date(Date.UTC(2026, 9, 24, 10)));
   assert.ok(a.endsWith('\r\n') && !/[^\r]\n/.test(a));
   assert.equal((a.match(/BEGIN:VEVENT/g) || []).length, 3);
-  assert.match(a, /SUMMARY:Lunch: pasta\\, sugo\\; basilico \\\\ olio/);
+  assert.match(a, /SUMMARY:Pranzo: pasta\\, sugo\\; basilico \\\\ olio/);
   assert.match(a, /DTSTART:20261026T123000\r\nDTEND:20261026T131500/);
   assert.match(a, /UID:meal-2026-11-01-dinner@mealplan-scanner\r\nDTSTAMP:\d{8}T\d{6}Z\r\nDTSTART:20261101T190000\r\nDTEND:20261101T200000/);
   assert.doesNotMatch(a, /DTSTART:\d{8}T\d{6}Z/);
@@ -99,14 +99,18 @@ test('buildICS: floating times, escaping, skipped empties, stable UIDs', () => {
 });
 
 test('CTC decoding: model probabilities pick the vocabulary word', async () => {
-  const { ctcLogP, greedyWords, decodeLine } = await import('../app/ocr.js');
+  const { ctcLogP, greedyWords, decoderFor } = await import('../app/ocr.js');
   // Frames that read "came" on the best path, but leave room for "carne".
   const frames = [{ c: 0.9, '': 0.1 }, { a: 0.9, '': 0.1 }, { m: 0.5, r: 0.4, '': 0.1 }, { '': 0.5, n: 0.4, m: 0.1 }, { e: 0.9, '': 0.1 },
     { ' ': 0.9, '': 0.1 }, { e: 0.9, '': 0.1 }];
   assert.deepEqual(greedyWords(frames).map((w) => w.word), ['came', 'e']);
   assert.ok(ctcLogP(frames, 'carne e') > ctcLogP(frames, 'xyz e'));
-  assert.equal(decodeLine(frames, { vocab: ['carne', 'pesce'] }), 'carne');
-  assert.equal(decodeLine(frames, { vocab: ['carne'], dishes: ['carne e insalata', 'came e'] }), 'came e');
+  assert.equal(decoderFor([])(frames), 'carne');
+  assert.equal(decoderFor(['came e'])(frames, { dishes: ['carne e insalata', 'came e'] }), 'came e');
+  // A slash read as "l" between two known words.
+  const F = (s) => [...s].map((c) => (c === '_' ? { '': 0.9 } : { [c]: 0.7, '': 0.2 }));
+  assert.equal(decoderFor([])(F('p_i_z_z_a_l_m_a_m_m_a')), 'pizza / mamma');
+  assert.equal(decoderFor([])(F('p_i_z_z_a_/_m_a_m_m_a')), 'pizza / mamma');
 });
 
 test('Google Calendar event ids: stable and base32hex', async () => {
@@ -114,4 +118,16 @@ test('Google Calendar event ids: stable and base32hex', async () => {
   assert.equal(eventId(new Date(2026, 9, 26), 'lunch'), 'meal20261026l');
   assert.equal(eventId(new Date(2026, 10, 1), 'dinner'), 'meal20261101d');
   assert.match(eventId(new Date(2026, 0, 5), 'dinner'), /^[a-v0-9]{5,}$/);
+});
+
+test('rotateRGBA: quarter turns, and four of them are the identity', async () => {
+  const { rotateRGBA } = await import('../app/lib.js');
+  const w = 3, h = 2, px = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) px[i * 4] = i;
+  const red = (r) => [...Array(r.w * r.h)].map((_, i) => r.rgba[i * 4]);
+  assert.deepEqual(red(rotateRGBA(px, w, h, 1)), [3, 0, 4, 1, 5, 2]);
+  assert.deepEqual(red(rotateRGBA(px, w, h, 2)), [5, 4, 3, 2, 1, 0]);
+  let r = { rgba: px, w, h };
+  for (let k = 0; k < 4; k++) r = rotateRGBA(r.rgba, r.w, r.h, 1);
+  assert.deepEqual(red(r), [0, 1, 2, 3, 4, 5]);
 });

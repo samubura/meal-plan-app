@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import jpeg from 'jpeg-js';
-import { scaleGray } from '../app/lib.js';
+import { scaleGray, rotateRGBA } from '../app/lib.js';
 
 // DATASET=dataset-full (env) uses the full-resolution originals of the same pages.
 export const dir = path.join(path.dirname(path.dirname(new URL(import.meta.url).pathname)), 'private', process.env.DATASET || 'dataset');
@@ -22,7 +22,9 @@ export function load(file) {
   });
   const { w, h } = ch[0], rgba = new Uint8Array(w * h * 4).fill(255);
   for (let i = 0; i < w * h; i++) for (let c = 0; c < 3; c++) rgba[4 * i + c] = ch[c].gray[i];
-  return { rgba, w, h };
+  // ROTATE=1|2|3 (env): turn the photo by quarter turns, to test the automatic straightening.
+  const q = +(process.env.ROTATE || 0);
+  return q ? rotateRGBA(rgba, w, h, q) : { rgba, w, h };
 }
 
 export const wrap = (w) => async (pgm, psm, withWords) => {

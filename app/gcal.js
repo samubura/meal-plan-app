@@ -10,7 +10,7 @@ let gis, token = null;
 export const loadGis = () => (gis ??= new Promise((resolve, reject) => {
   const s = Object.assign(document.createElement('script'), { src: 'https://accounts.google.com/gsi/client', async: true });
   s.onload = resolve;
-  s.onerror = () => { gis = null; reject(new Error('Could not load Google sign-in. Check your connection.')); };
+  s.onerror = () => { gis = null; reject(new Error('Impossibile caricare l’accesso a Google. Controlla la connessione.')); };
   document.head.append(s);
 }));
 
@@ -27,7 +27,7 @@ export async function signIn() {
         token = { value: r.access_token, expires: Date.now() + r.expires_in * 1000 };
         resolve(token.value);
       },
-      error_callback: (e) => reject(new Error(e.type === 'popup_closed' ? 'Google sign-in was closed.' : e.message || e.type)),
+      error_callback: (e) => reject(new Error(e.type === 'popup_closed' ? 'Hai chiuso l’accesso a Google.' : e.message || e.type)),
     }).requestAccessToken({ prompt: '' });
   });
 }
@@ -38,14 +38,17 @@ async function api(path, { method = 'GET', body } = {}) {
     headers: { Authorization: `Bearer ${token.value}`, ...(body && { 'Content-Type': 'application/json' }) },
     body: body && JSON.stringify(body),
   });
-  if (!res.ok) throw Object.assign(new Error(`Google Calendar: ${res.status} ${res.statusText}`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(`Google Calendar: errore ${res.status}`), { status: res.status });
   return res.status === 204 ? null : res.json();
 }
 
-// Calendars the user can add events to: [{id, summary, primary}].
+// Calendars the user can add events to: [{id, summary, primary}], a family calendar first (the one
+// Google creates for a family group, shared by its members), then other shared ones, then the personal one.
 export async function calendars() {
   const r = await api('/users/me/calendarList?minAccessRole=writer');
-  return r.items.map(({ id, summary, summaryOverride, primary }) => ({ id, summary: summaryOverride || summary, primary: !!primary }));
+  const rank = (c) => (/famil/i.test(c.summary) ? 0 : c.primary ? 2 : 1);
+  return r.items.map(({ id, summary, summaryOverride, primary }) => ({ id, summary: summaryOverride || summary, primary: !!primary }))
+    .sort((a, b) => rank(a) - rank(b));
 }
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -62,8 +65,8 @@ export async function syncWeek(calendarId, days, weekStart, opts) {
   const cal = `/calendars/${encodeURIComponent(calendarId)}/events`;
   let saved = 0, removed = 0;
   await Promise.all(days.flatMap((day, i) => [
-    ['lunch', 'Lunch', opts.lunchTime, opts.lunchMin],
-    ['dinner', 'Dinner', opts.dinnerTime, opts.dinnerMin],
+    ['lunch', 'Pranzo', opts.lunchTime, opts.lunchMin],
+    ['dinner', 'Cena', opts.dinnerTime, opts.dinnerMin],
   ].map(async ([slot, label, time, mins]) => {
     const [h, m] = time.split(':').map(Number);
     const start = new Date(Y, M - 1, D + i, h, m), end = new Date(start.getTime() + mins * 60000);

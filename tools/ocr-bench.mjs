@@ -32,7 +32,7 @@ const engine = process.argv.find((a) => a.startsWith('--engine='))?.slice(9) ?? 
 const lineVariants = process.argv.find((a) => a.startsWith('--lines='))?.slice(8).split(',');
 let readLine, decode, decoderFor;
 if (engine === 'ppocr') {
-  if (!process.argv.includes('--no-decode')) ({ decodeLine: decode, decoderFor } = await import('../app/ocr.js'));
+  if (!process.argv.includes('--no-decode')) { ({ decoderFor } = await import('../app/ocr.js')); decode = decoderFor([]); }
   const ort = (await import('onnxruntime-node')).default;
   const { createRecognizer } = await import('../app/ocr.js');
   const m = path.join(root, 'app', 'models');
@@ -57,8 +57,8 @@ await Promise.all(workers.map(async (w) => {
 await Promise.all(workers.map((w) => w.terminate()));
 
 results.sort((a, b) => a.f.localeCompare(b.f));
-console.log(`${'photo'.padEnd(36)} layout slots exact  sim   sec`);
-for (const r of results) console.log(`${r.f.padEnd(36)} ${String(r.layout).padEnd(6)} ${String(r.slots).padStart(5)} ${String(r.exact).padStart(5)} ${r.sim.toFixed(2)} ${(r.ms / 1000).toFixed(1).padStart(5)}`);
+console.log(`${'photo'.padEnd(36)} layout slots exact  sim   sec  turned`);
+for (const r of results) console.log(`${r.f.padEnd(36)} ${String(r.layout).padEnd(6)} ${String(r.slots).padStart(5)} ${String(r.exact).padStart(5)} ${r.sim.toFixed(2)} ${(r.ms / 1000).toFixed(1).padStart(5)}  ${r.rotated ?? ''}`);
 const sum = (k) => results.reduce((a, r) => a + r[k], 0);
 console.log(`TOTAL ${results.length} photos: slots ${sum('slots')}/${14 * results.length}, exact ${sum('exact')}/${14 * results.length}, sim ${(sum('sim') / results.length).toFixed(3)}, perfect-slot pages ${results.filter((r) => r.slots === 14).length}`);
 if (process.argv.includes('--log')) for (const r of results) {

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parsePlan, daysFromReads } from '../app/lib.js';
-import { decodeLine } from '../app/ocr.js';
+import { decoderFor } from '../app/ocr.js';
 import { score } from '../tools/score.mjs';
 
 const dir = new URL('../private/fixtures/', import.meta.url);
@@ -23,7 +23,7 @@ for (const f of ['ocr-full-plain.txt', 'ocr-meals-plain.txt']) {
 // Real per-row readings saved by tools/ocr-bench.mjs --dump (regression guard on decoding).
 test('daysFromReads on real OCR readings', { skip }, () => {
   for (const { f, reads } of JSON.parse(read('reads.json'))) {
-    const days = daysFromReads(reads, [], { decode: decodeLine });
+    const days = daysFromReads(reads, [], { decode: decoderFor([]) });
     const sc = score(days, truth[f]), [slots, exact] = expected.reads[f];
     assert.ok(sc.slots >= slots && sc.exact >= exact, `${f}: ${sc.slots} slots, ${sc.exact} exact`);
     const w = expected.wholeDay;

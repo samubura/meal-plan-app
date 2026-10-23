@@ -72,7 +72,9 @@ export function toFrames(probs, T, C, chars, k = 10) {
 }
 
 const FLOOR = 1e-5; // probability of a character outside a frame's top-k
-const lp = (f, ch) => Math.log(f[ch] ?? FLOOR);
+// "/" is often read as l, |, 1, I, [ ...: a slash in a candidate may use any of those readings.
+const SLASHY = ['/', '|', 'l', '1', 'i', '[', ']', '!', '(', ')'];
+const lp = (f, ch) => (ch === '/' ? Math.log(Math.max(FLOOR, SLASHY.reduce((a, c) => a + (f[c] || 0), 0))) : Math.log(f[ch] ?? FLOOR));
 const logAdd = (a, b) => (a === -Infinity ? b : b === -Infinity ? a : Math.max(a, b) + Math.log1p(Math.exp(-Math.abs(a - b))));
 
 // log P(text | frames[t0..t1)) under CTC (forward algorithm). text: folded string.
@@ -102,6 +104,13 @@ export function greedyWords(frames) {
   const words = [];
   let cur = null, prev = null, lastSpace = -1;
   best.forEach((ch, t) => {
+    if (ch === '/' || ch === '|') { // a slash is a word of its own ("pizza/mamma" = pizza / mamma)
+      if (cur) { cur.t1 = t; words.push(cur); cur = null; }
+      if (prev !== ch) words.push({ word: '/', t0: t, t1: t + 1 });
+      else words.at(-1).t1 = t + 1;
+      lastSpace = t; prev = ch;
+      return;
+    }
     if (ch === ' ') {
       if (cur) { cur.t1 = t; words.push(cur); cur = null; }
       lastSpace = t;
@@ -115,63 +124,9 @@ export function greedyWords(frames) {
   return words;
 }
 
-// Decoding weights (log-probability units). ponytail: tuned on private/dataset (tools/decode-tune.mjs).
-export const DECODE = { edit: 0.34, bonus: 12, split: 0, dish: 8 };
-
 const core = (w) => w.replace(/(^|[a-z])2(?=[a-z])/g, '$1z').replace(/[0-9]/g, (d) => ({ 0: 'o', 1: 'i', 4: 'a', 5: 's', 8: 'b' })[d] ?? d).replace(/[^a-z]/g, '');
 const near = (c, V, maxD) => V.filter(([, f]) => Math.abs(f.length - c.length) <= maxD && lev(c, f) <= maxD);
 const SHORT = new Set(['e', 'o', 'a', 'al', 'ai', 'da', 'di', 'in', 'la', 'le', 'lo', 'il', 'con', 'col', 'per', 'del']);
-
-// frames -> dish text. vocab: words (FOOD_WORDS + remembered); dishes: remembered whole dishes.
-// Each word of the best path is replaced by the vocabulary word (or two words, if they ran together)
-// that the model itself finds likely enough; then a remembered dish wins if it explains the whole line.
-export function decodeLine(frames, { vocab = [], dishes = [], k = DECODE, original = '' } = {}) {
-  const V = vocab.map((v) => [v, fold(v)]), known = new Set(V.map(([, f]) => f));
-  let words = greedyWords(frames);
-  // Label fragment ("cena:", "n20:") at the start belongs to the label column.
-  if (words.length > 1 && /[:.;-]$/.test(words[0].word) && (matchMeal(words[0].word) || core(words[0].word).length <= 4)) words = words.slice(1);
-  const caseOf = new Map(original.split(/\s+/).map((w) => [fold(w), w]));
-  const out = [];
-  for (const w of words) {
-    const raw = w.word, c = core(raw);
-    if (/^[|l1/]$/.test(raw)) { out.push('/'); continue; }
-    if (!c || /^x\d$/.test(raw)) { out.push(raw); continue; }
-    const pre = raw.match(/^[^a-z0-9]*/)[0], post = raw.match(/[^a-z0-9]*$/)[0];
-    const score = (t) => ctcLogP(frames, pre + t + post, w.t0, w.t1);
-    let best = { text: caseOf.get(raw) ?? raw, s: score(c) + (known.has(c) ? k.bonus : 0) };
-    const maxD = Math.max(1, Math.ceil(c.length * k.edit));
-    for (const [v, f] of near(c, V, maxD)) {
-      const s = score(f) + k.bonus;
-      if (s > best.s) best = { text: v, s };
-    }
-    if (c.length >= 5) for (let i = 1; i < c.length; i++) {
-      const L = c.slice(0, i), R = c.slice(i);
-      const ls = SHORT.has(L) ? [[L, L]] : L.length >= 3 ? near(L, V, Math.max(1, Math.ceil(L.length * k.edit))).slice(0, 3) : [];
-      const rs = ls.length && (SHORT.has(R) ? [[R, R]] : R.length >= 3 ? near(R, V, Math.max(1, Math.ceil(R.length * k.edit))).slice(0, 3) : []);
-      for (const [lv, lf] of ls) for (const [rv, rf] of rs || []) {
-        const s = score(`${lf} ${rf}`) + k.bonus - k.split;
-        if (s > best.s) best = { text: `${lv} ${rv}`, s };
-      }
-    }
-    out.push(best.text.replace(/^[^\p{L}\p{N}(]+|[^\p{L}\p{N})?]+$/gu, ''));
-  }
-  while (out.length && (SHORT.has(out.at(-1)) || out.at(-1) === '/' || out.at(-1) === '+' || !out.at(-1))) out.pop();
-  while (out.length && (out[0] === '/' || out[0] === '+')) out.shift();
-  let text = out.filter(Boolean).join(' ');
-  // Whole remembered dish.
-  if (dishes.length && text) {
-    const ft = fold(text), base = ctcLogP(frames, ft);
-    let bestD = null;
-    for (const d of dishes) {
-      const fd = fold(d);
-      if (1 - lev(fd, ft) / Math.max(fd.length, ft.length) < 0.4) continue;
-      const s = ctcLogP(frames, fd) + k.dish;
-      if (s > base && (!bestD || s > bestD.s)) bestD = { d, s };
-    }
-    if (bestD) text = bestD.d;
-  }
-  return text;
-}
 
 // ---- Word-pair language model ----
 // counts: {words: {w: n}, pairs: {"a b": n}} (food-it.json); extra: words that count as known
@@ -204,61 +159,88 @@ export function makeLM(counts, extra = [], dishes = [], { extraN = 3, dishN = 10
 }
 
 // ponytail: tuned on private/dataset with leave-one-out dishes (tools/lm-tune.mjs --grid).
-export const DECODE_LM = { edit: 0.34, lm: 0.75, oov: -16, keep: 6, dish: 8 };
+export const DECODE = { edit: 0.34, lm: 0.75, oov: -16, keep: 6, dish: 8, slash: 2 };
+
+const ctcText = (s) => fold(s).replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ').trim();
 
 // Context-aware decoding: per word of the best path, the few likeliest candidates (raw reading,
-// nearby known words, run-together splits) by the model's probability; then the best whole line
-// by model score + lm weight x word-pair log probability (Viterbi). OOV words cost `oov`.
-export function decodeLineLM(frames, { lm, dishes = [], k = DECODE_LM, original = '' } = {}) {
+// nearby known words, run-together splits, a slash read as a letter) by the model's probability;
+// then the best whole line by model score + lm weight x word-pair log probability (Viterbi).
+// Candidates are lists of parts: {t: folded word, text, oov} or '/' (which restarts the context).
+export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' } = {}) {
   const V = lm.words.map((w) => [w, w]);
   let words = greedyWords(frames);
   if (words.length > 1 && /[:.;-]$/.test(words[0].word) && (matchMeal(words[0].word) || core(words[0].word).length <= 4)) words = words.slice(1);
-  const caseOf = new Map(original.split(/\s+/).map((w) => [fold(w).replace(/[^a-z0-9]/g, ''), w.replace(/^[^\p{L}\p{N}(]+|[^\p{L}\p{N})?]+$/gu, '')]));
-  // Each position: [{toks: [folded words], text, s}]
+  const caseOf = new Map(original.split(/[\s/|]+/).map((w) => [fold(w).replace(/[^a-z0-9]/g, ''), w.replace(/^[^\p{L}\p{N}(]+|[^\p{L}\p{N})?]+$/gu, '')]));
+  const maxD = (n) => Math.max(1, Math.ceil(n * k.edit));
+  const word = (c) => ({ t: c, text: lm.known(c) ? c : caseOf.get(c) ?? c, oov: !lm.known(c) });
+  // Options for a piece of a split word: known words near it, or itself when long enough.
+  const opts = (c, rawOk) => {
+    if (!c) return [];
+    if (lm.known(c)) return [word(c)];
+    const n = c.length >= 3 ? near(c, V, maxD(c.length)).slice(0, 3).map(([f]) => word(f)) : [];
+    return rawOk && c.length >= 2 ? [...n, word(c)] : n;
+  };
   const cols = [];
   for (const w of words) {
     const raw = w.word, c = core(raw);
-    if (/^[|l1/]$/.test(raw)) { cols.push([{ toks: [], text: '/', s: 0 }]); continue; }
-    if (raw === '+' || /^x\d$/.test(raw)) { cols.push([{ toks: [], text: raw, s: 0 }]); continue; }
+    if (raw === '/' || /^[|l1[\]!]$/.test(raw)) { cols.push([{ parts: ['/'], s: 0 }]); continue; }
+    if (raw === '+' || /^x\d$/.test(raw)) { cols.push([{ parts: [{ t: null, text: raw }], s: 0 }]); continue; }
     if (!c) continue;
     const pre = raw.match(/^[^a-z0-9]*/)[0], post = raw.match(/[^a-z0-9]*$/)[0];
-    const score = (t) => ctcLogP(frames, pre + t + post, w.t0, w.t1);
-    const cands = [{ toks: [c], text: lm.known(c) ? c : caseOf.get(c) ?? c, s: score(c), oov: !lm.known(c) }];
-    const maxD = (n) => Math.max(1, Math.ceil(n * k.edit));
-    for (const [f] of near(c, V, maxD(c.length))) if (f !== c) cands.push({ toks: [f], text: f, s: score(f) });
+    const score = (parts) => ctcLogP(frames, pre + parts.map((p) => (p === '/' ? '/' : p.t)).join(' ').replace(/ ?\/ ?/g, '/') + post, w.t0, w.t1);
+    const cands = [[word(c)]];
+    for (const [f] of near(c, V, maxD(c.length))) if (f !== c) cands.push([word(f)]);
     if (c.length >= 5) for (let i = 1; i < c.length; i++) {
-      const L = c.slice(0, i), R = c.slice(i);
-      const ls = lm.known(L) ? [[L]] : L.length >= 3 ? near(L, V, maxD(L.length)).slice(0, 3) : [];
-      const rs = ls.length ? (lm.known(R) ? [[R]] : R.length >= 3 ? near(R, V, maxD(R.length)).slice(0, 3) : []) : [];
-      for (const [lf] of ls) for (const [rf] of rs) cands.push({ toks: [lf, rf], text: `${lf} ${rf}`, s: score(`${lf} ${rf}`) });
+      const ls = opts(c.slice(0, i)), rs = ls.length ? opts(c.slice(i)) : [];
+      for (const l of ls) for (const r of rs) if (!l.oov && !r.oov) cands.push([l, r]);
     }
-    cands.sort((a, b) => b.s - a.s);
-    cols.push(cands.slice(0, k.keep));
+    // A slash read as a letter: "pizzalmamma", "comunital", "lpanino".
+    const lower = fold(raw);
+    for (let p = 0; p < lower.length; p++) {
+      if (!SLASHY.includes(lower[p]) || lower[p] === '/') continue;
+      const L = core(lower.slice(0, p)), R = core(lower.slice(p + 1));
+      if (!L && !cols.length) continue; // nothing before a leading slash
+      const ls = L ? opts(L, L.length >= 4) : [null], rs = R ? opts(R, true) : [null];
+      for (const l of ls) for (const r of rs) {
+        if ((l?.oov ?? true) && (r?.oov ?? true)) continue; // at least one side must be a known word
+        cands.push([l, '/', r].filter(Boolean));
+      }
+    }
+    const scored = cands.map((parts) => ({ parts, s: score(parts) - (parts.includes('/') ? k.slash : 0) }));
+    scored.sort((a, b) => b.s - a.s);
+    cols.push(scored.slice(0, k.keep));
   }
-  // Viterbi over candidates with the word-pair model.
-  const lmScore = (toks, prev, oov) => {
+  // Viterbi over candidates with the word-pair model; a slash starts a new phrase.
+  const lmScore = (parts, prev) => {
     let s = 0;
-    toks.forEach((t, i) => { s += oov ? k.oov : k.lm * lm.logp(t, i ? toks[i - 1] : prev); });
-    return s;
+    for (const p of parts) {
+      if (p === '/') { prev = null; continue; }
+      if (p.t == null) continue;
+      s += p.oov ? k.oov : k.lm * lm.logp(p.t, prev);
+      prev = p.t;
+    }
+    return { s, prev };
   };
   let beam = [{ s: 0, last: null, out: [] }];
   for (const col of cols) {
     const next = [];
     for (const b of beam) for (const c of col) {
-      next.push({ s: b.s + c.s + lmScore(c.toks, b.last, c.oov), last: c.toks.length ? c.toks.at(-1) : b.last, out: [...b.out, c.text] });
+      const l = lmScore(c.parts, b.last);
+      next.push({ s: b.s + c.s + l.s, last: l.prev, out: [...b.out, ...c.parts.map((p) => (p === '/' ? '/' : p.text))] });
     }
     next.sort((a, b) => b.s - a.s);
     beam = next.slice(0, 12);
   }
-  const out = beam[0]?.out || [];
-  while (out.length && (SHORT.has(out.at(-1)) || out.at(-1) === '/' || out.at(-1) === '+' || !out.at(-1))) out.pop();
+  const out = (beam[0]?.out || []).map((t) => t.replace(/^[^\p{L}\p{N}(/]+|[^\p{L}\p{N})?/]+$/gu, '')).filter(Boolean);
+  while (out.length && (SHORT.has(out.at(-1)) || out.at(-1) === '/' || out.at(-1) === '+')) out.pop();
   while (out.length && (out[0] === '/' || out[0] === '+')) out.shift();
-  let text = out.filter(Boolean).join(' ');
+  let text = out.join(' ').replace(/(\/ )+/g, '/ ').replace(/\s*\/\s*/g, ' / ');
   if (dishes.length && text) {
-    const ft = fold(text), base = ctcLogP(frames, ft);
+    const ft = ctcText(text), base = ctcLogP(frames, ft);
     let bestD = null;
     for (const d of dishes) {
-      const fd = fold(d);
+      const fd = ctcText(d);
       if (1 - lev(fd, ft) / Math.max(fd.length, ft.length) < 0.4) continue;
       const s = ctcLogP(frames, fd) + k.dish;
       if (s > base && (!bestD || s > bestD.s)) bestD = { d, s };
@@ -268,10 +250,8 @@ export function decodeLineLM(frames, { lm, dishes = [], k = DECODE_LM, original 
   return text;
 }
 
-// The decoder the app uses: with remembered dishes, the word-pair model built from them (measured
-// best); on a first scan, the vocabulary bonus (the word-pair model needs the user's phrasing).
+// The decoder the app uses: the word-pair model over FOOD_WORDS and the user's remembered dishes.
 export function decoderFor(dishes = []) {
-  if (!dishes.length) return decodeLine;
   const lm = makeLM({}, FOOD_WORDS, dishes);
-  return (frames, o) => decodeLineLM(frames, { ...o, lm });
+  return (frames, o) => decodeLine(frames, { ...o, lm });
 }

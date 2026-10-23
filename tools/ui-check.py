@@ -15,7 +15,7 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 url = f'http://127.0.0.1:{srv.server_port}/'
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = p.chromium.launch(args=['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'])
     for scheme in ('light', 'dark'):
         ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, color_scheme=scheme,
                             is_mobile=True, has_touch=True, accept_downloads=True)
@@ -30,6 +30,10 @@ with sync_playwright() as p:
             "window.google={accounts:{oauth2:{initTokenClient:(o)=>({requestAccessToken:()=>setTimeout(()=>o.callback({access_token:'t',expires_in:3600}),10)})}}};"))
         page.goto(url)
         page.screenshot(path=out / f'1-capture-{scheme}.png')
+        if scheme == 'light':  # in-app camera (Chromium's fake camera): opens, shows the guide, closes
+            page.click('#takePhoto'); page.wait_for_selector('#cam:not([hidden])')
+            page.wait_for_timeout(800); page.screenshot(path=out / '0-camera.png')
+            page.click('#camClose'); assert page.is_hidden('#cam')
         if scheme == 'dark':  # layout only; the scan itself ran in light mode
             page.click('#manual'); page.screenshot(path=out / '3-review-dark.png', full_page=True)
             ctx.close(); continue
@@ -66,19 +70,35 @@ with sync_playwright() as p:
         assert page.input_value('#calendar') == 'family@group'
         page.screenshot(path=out / '4-pick-calendar.png', full_page=True)
         page.click('#gsync')
-        page.wait_for_selector('#saved:has-text("Done:")')
+        page.wait_for_selector('#saved:has-text("Fatto:")')
         print('sync:', page.text_content('#saved'))
         page.screenshot(path=out / '5-synced.png', full_page=True)
         ev = [c for c in calls if '/events' in c[1]]
         import json as _j, re as _re
         posts = [_j.loads(c[2]) for c in ev if c[0] == 'POST']
         assert all(_re.fullmatch(r'meal2026\d{4}[ld]', p['id']) for p in posts), posts
-        assert all(p['start']['timeZone'] and p['summary'].startswith(('Lunch: ', 'Dinner: ')) for p in posts)
+        assert all(p['start']['timeZone'] and p['summary'].startswith(('Pranzo: ', 'Cena: ')) for p in posts)
         assert any(c[0] == 'PUT' and c[1].endswith('/meal20261026l') for c in ev), 'conflict must update'
         print('requests:', {m: sum(c[0] == m for c in ev) for m in ('POST', 'PUT', 'DELETE')}, '| example', posts[0])
         n = len(calls)
-        page.click('#gsync'); page.wait_for_function(f'document.querySelector("#saved").textContent.startsWith("Done:")')
+        page.click('#gsync'); page.wait_for_function('document.querySelector("#saved").textContent.startsWith("Fatto:")')
         assert not any('calendarList' in c[1] for c in calls[n:]), 'second sync reuses the saved calendar'
+        # Swap Monday lunch and Tuesday dinner, sync again: the same event ids get the swapped dishes.
+        mon, tue = page.input_value('#mon-lunch'), page.input_value('#tue-dinner')
+        page.click('.swap[data-day="0"][data-slot="lunch"]'); page.click('.swap[data-day="1"][data-slot="dinner"]')
+        assert (page.input_value('#mon-lunch'), page.input_value('#tue-dinner')) == (tue, mon)
+        assert page.text_content('#gsyncLabel') == 'Aggiorna Google Calendar'
+        n = len(calls)
+        page.click('#gsync'); page.wait_for_function('document.querySelector("#saved").textContent.startsWith("Fatto:")')
+        sent = {(_j.loads(c[2]) if c[2] else {}).get('id'): _j.loads(c[2])['summary'] for c in calls[n:] if c[0] in ('POST', 'PUT') and c[2]}
+        assert sent['meal20261026l'] == f'Pranzo: {tue}' and sent['meal20261027d'] == f'Cena: {mon}', sent
+        print('swap + re-sync: ok')
+        # The week survives closing the app.
+        page.reload(); page.wait_for_selector('#resume:not([hidden])')
+        page.screenshot(path=out / '6-resume.png')
+        page.click('#resumeBtn')
+        assert page.input_value('#mon-lunch') == tue and page.input_value('#wed-dinner') == 'carne e zucchine'
+        print('resume after reload: ok')
         print('saved', dl.value.suggested_filename, 'remembered dishes:', page.evaluate("JSON.parse(localStorage.getItem('mealplan.dishes')).length"))
         overflow = page.evaluate('document.documentElement.scrollWidth > window.innerWidth')
         print('horizontal overflow:', overflow)

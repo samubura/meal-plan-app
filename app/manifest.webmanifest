@@ -1,7 +1,8 @@
 {
   "name": "Meal Plan Scanner",
-  "short_name": "Meal Plan",
-  "description": "Photograph your handwritten weekly meal plan and add it to your calendar.",
+  "short_name": "Pasti",
+  "description": "Fotografa il piano dei pasti scritto a mano e aggiungilo al calendario.",
+  "lang": "it",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

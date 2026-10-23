@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { daysFromReads, norm } from '../app/lib.js';
 import { sim } from './score.mjs';
 
-const key = (s) => norm(s).replace(/[^a-z0-9]+/g, ' ').trim();
+const key = (s) => norm(s).replace(/[^a-z0-9/]+/g, ' ').replace(/\s*\/\s*/g, ' / ').trim();
 const SAME = { 'photo_2026-10-23_13-36-08.jpg': 'photo_2026-10-23_13-36-01 (2).jpg' };
 const sameSet = (f, g) => f === g || SAME[f] === g || SAME[g] === f;
 

@@ -1,7 +1,6 @@
 // Offline tuning of pickDish weights on saved row readings (no OCR): node tools/pick-tune.mjs dump.json
 import fs from 'node:fs';
 import { daysFromReads } from '../app/lib.js';
-import { decodeLine, DECODE } from '../app/ocr.js';
 import { score } from './score.mjs';
 
 const truth = JSON.parse(fs.readFileSync(new URL('../private/dataset/truth.json', import.meta.url)));
@@ -14,20 +13,15 @@ const others = (f) => Object.keys(truth).filter((g) => g !== f && same[g] !== f 
 const evalK = (k) => {
   let slots = 0, exact = 0, sim = 0;
   for (const { f, reads } of dump) {
-    const days = daysFromReads(reads, personal ? others(f) : [], useDecode ? { decode: decodeLine, dk: k } : { k });
+    const days = daysFromReads(reads, personal ? others(f) : [], { k });
     const s = score(days, truth[f]);
     slots += s.slots; exact += s.exact; sim += s.sim / dump.length;
   }
   return { slots, exact, sim: +sim.toFixed(3) };
 };
-// --decode: tune ocr.js DECODE weights (readings need frames: bench with --engine=ppocr) instead of PICK.
-const useDecode = process.argv.includes('--decode');
 const out = [];
-if (useDecode) {
-  for (const edit of (process.env.EDIT || "0.25,0.34,0.5").split(",").map(Number)) for (const bonus of (process.env.BONUS || "6,9,12,16,22").split(",").map(Number)) for (const split of (process.env.SPLIT || "0,2").split(",").map(Number)) for (const dish of (process.env.DISH || "0").split(",").map(Number))
-    out.push({ edit, bonus, split, dish, ...evalK({ edit, bonus, split, dish }) });
-} else for (const vocab of [0, 0.5, 1, 2]) for (const conf of [0, 0.05, 0.1, 0.2, 0.4]) for (const agree of [0, 2, 4, 8, 16])
+for (const vocab of [0, 0.5, 1, 2]) for (const conf of [0, 0.05, 0.1, 0.2, 0.4]) for (const agree of [0, 2, 4, 8, 16])
   out.push({ vocab, conf, agree, ...evalK({ vocab, conf, agree }) });
 out.sort((a, b) => b.slots + b.exact - a.slots - a.exact || b.sim - a.sim);
 for (const o of out.slice(0, 12)) console.log(JSON.stringify(o));
-console.log(personal ? 'personal dictionary (leave-one-out)' : 'no personal dictionary', 'current', JSON.stringify(evalK(useDecode ? DECODE : undefined)));
+console.log(personal ? 'personal dictionary (leave-one-out)' : 'no personal dictionary', 'current', JSON.stringify(evalK(undefined)));

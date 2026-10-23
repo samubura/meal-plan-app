@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Meal Plan Scanner</title>
-<meta name="description" content="Photograph your handwritten weekly meal plan and add it to your calendar.">
+<meta name="description" content="Fotografa il piano dei pasti scritto a mano e aggiungilo al calendario.">
 <meta name="theme-color" content="#f2f6f0" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121a15" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Meal Plan">
+<meta name="apple-mobile-web-app-title" content="Pasti">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -67,7 +67,11 @@
   .day { border-top: 1px solid var(--line); padding: 12px 0 4px; }
   .day:first-child { border-top: 0; padding-top: 0; }
   .day h3 { font-size: .95rem; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
-  .meal { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .meal { display: grid; grid-template-columns: 64px 1fr 48px; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .swap { width: 48px; height: 48px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+  .swap svg { width: 22px; height: 22px; }
+  .meal.picked .dish { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .meal.picked .swap { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
   .meal label { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
   .dish {
     width: 100%; min-height: 48px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line);
@@ -90,6 +94,20 @@
   pre { white-space: pre-wrap; word-break: break-word; font-size: .8rem; background: var(--bg); padding: 10px; border-radius: 10px; margin: 8px 0 0; max-height: 50vh; overflow: auto; }
   .notice { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
   .error { color: var(--error); font-weight: 600; }
+  .cam { position: fixed; inset: 0; z-index: 10; background: #000; }
+  .cam video { width: 100%; height: 100%; object-fit: cover; }
+  .guide { position: absolute; left: 50%; top: 46%; height: 74%; aspect-ratio: 0.64; max-width: 88%; transform: translate(-50%, -50%);
+    border: 3px dashed rgba(255,255,255,.85); border-radius: 14px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); pointer-events: none; }
+  .cam-hint { position: absolute; top: calc(env(safe-area-inset-top) + 14px); left: 0; right: 0; text-align: center; color: #fff;
+    font-weight: 600; text-shadow: 0 1px 4px #000; margin: 0; }
+  .cam-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 24px calc(env(safe-area-inset-bottom) + 22px);
+    display: flex; align-items: center; justify-content: space-between; }
+  .cam-btn { width: 56px; height: 56px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; display: grid; place-items: center; cursor: pointer; }
+  .cam-btn svg { width: 26px; height: 26px; }
+  .cam-btn[aria-pressed="true"] { background: #ffd54f; color: #000; }
+  .shutter { width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,.25); cursor: pointer; }
+  .shutter:active { background: #fff; }
+  .spacer { width: 56px; }
   ol { padding-left: 1.2em; margin: 0 0 8px; }
   li { margin-bottom: 6px; }
 </style>
@@ -101,34 +119,41 @@
     <h1>Meal Plan Scanner</h1>
   </header>
 
+  <section id="resume" class="card" hidden aria-labelledby="resume-title">
+    <h2 id="resume-title">Settimana in corso</h2>
+    <p class="muted" id="resume-text"></p>
+    <button class="btn" id="resumeBtn" type="button">Riprendi la settimana</button>
+  </section>
+
   <section id="capture" class="card" aria-labelledby="capture-title">
-    <h2 id="capture-title">Scan this week's plan</h2>
-    <p class="muted">Take a photo of the whole page, straight on and in good light. Everything stays on your phone.</p>
-    <label class="btn primary" for="camera">
+    <h2 id="capture-title">Scansiona il piano della settimana</h2>
+    <p class="muted">Fotografa tutta la pagina, dritta e con buona luce. Tutto resta sul telefono.</p>
+    <button class="btn primary" id="takePhoto" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="4"/></svg>
-      Take photo
-    </label>
+      Scatta una foto
+    </button>
     <input id="camera" type="file" accept="image/*" capture="environment">
     <label class="btn" for="gallery">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
-      Choose photo
+      Scegli dalla galleria
     </label>
     <input id="gallery" type="file" accept="image/*">
-    <p class="muted" style="margin:12px 0 0">Or <button type="button" id="manual" class="linklike">type the week in by hand</button>.</p>
+    <p class="muted" style="margin:12px 0 0">Oppure <button type="button" id="manual" class="linklike">scrivi la settimana a mano</button>.</p>
   </section>
 
   <section id="working" class="card" hidden aria-live="polite">
-    <div id="status">Preparing…</div>
+    <div id="status">Preparazione…</div>
     <progress id="bar" max="1" value="0"></progress>
-    <p class="muted" style="margin:10px 0 0">This takes a few seconds. Keep the app open.</p>
+    <p class="muted" style="margin:10px 0 0">Ci vuole qualche secondo. Tieni l’app aperta.</p>
   </section>
 
   <section id="review" hidden aria-labelledby="review-title">
     <div class="card">
-      <h2 id="review-title">Check the meals</h2>
-      <p class="notice" id="review-note">Handwriting is hard to read: fix anything that's wrong. Empty meals are skipped.</p>
+      <h2 id="review-title">Controlla i pasti</h2>
+      <p class="notice" id="review-note"></p>
+      <p class="notice" id="swapHint" hidden aria-live="polite">Tocca ⇅ su un altro pasto per scambiarli (tocca di nuovo lo stesso per annullare).</p>
       <div class="settings" style="margin-bottom:12px">
-        <label class="wide">Week starting (Monday)
+        <label class="wide">Settimana dal (lunedì)
           <input type="date" id="weekStart" required>
         </label>
       </div>
@@ -138,38 +163,54 @@
     <div class="card">
       <button class="btn primary" id="gsync" type="button" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 12v6M9 15h6"/></svg>
-        Add to Google Calendar
+        <span id="gsyncLabel">Aggiungi a Google Calendar</span>
       </button>
       <div class="settings" id="calPick" hidden style="margin-top:10px">
-        <label class="wide">Calendar <select id="calendar"></select></label>
+        <label class="wide">Calendario <select id="calendar"></select></label>
       </div>
-      <button class="btn" id="save" type="button">Download .ics file</button>
+      <button class="btn" id="save" type="button">Scarica il file .ics</button>
       <p id="saved" class="muted" style="margin:12px 0 0" hidden aria-live="polite"></p>
-      <button type="button" id="otherCal" class="linklike" hidden>Use a different calendar</button>
+      <button type="button" id="otherCal" class="linklike" hidden>Usa un altro calendario</button>
     </div>
 
     <div class="card">
       <details>
-        <summary>Times</summary>
+        <summary>Orari</summary>
         <div class="settings">
-          <label>Lunch at <input type="time" id="lunchTime" value="12:30"></label>
-          <label>Lunch minutes <input type="number" id="lunchMin" value="45" min="5" max="600" step="5" inputmode="numeric"></label>
-          <label>Dinner at <input type="time" id="dinnerTime" value="19:00"></label>
-          <label>Dinner minutes <input type="number" id="dinnerMin" value="60" min="5" max="600" step="5" inputmode="numeric"></label>
+          <label>Pranzo alle <input type="time" id="lunchTime" value="12:45"></label>
+          <label>Durata pranzo (min) <input type="number" id="lunchMin" value="60" min="5" max="600" step="5" inputmode="numeric"></label>
+          <label>Cena alle <input type="time" id="dinnerTime" value="20:00"></label>
+          <label>Durata cena (min) <input type="number" id="dinnerMin" value="60" min="5" max="600" step="5" inputmode="numeric"></label>
         </div>
       </details>
       <details>
-        <summary>What the scan read</summary>
+        <summary>Cosa ha letto la scansione</summary>
         <pre id="raw"></pre>
       </details>
     </div>
 
-    <button class="btn" id="again" type="button">Scan another photo</button>
+    <button class="btn" id="again" type="button">Scansiona un’altra settimana</button>
   </section>
 
   <p id="error" class="error" role="alert" hidden></p>
   <datalist id="known"></datalist>
 </main>
+
+<section id="cam" class="cam" hidden aria-label="Fotocamera">
+  <video id="video" playsinline muted autoplay></video>
+  <div class="guide" aria-hidden="true"></div>
+  <p class="cam-hint">Inquadra tutta la pagina nel riquadro</p>
+  <div class="cam-bar">
+    <button id="camClose" class="cam-btn" type="button" aria-label="Chiudi la fotocamera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <button id="shutter" class="shutter" type="button" aria-label="Scatta"></button>
+    <button id="torch" class="cam-btn" type="button" aria-label="Torcia" aria-pressed="false" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+    </button>
+    <span id="torchSpacer" class="spacer"></span>
+  </div>
+</section>
 
 <script type="module">
 import Tesseract from 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js';
@@ -184,7 +225,9 @@ ort.env.wasm.numThreads = 1;
 const MODEL = 'models/latin_PP-OCRv5_mobile_rec';
 
 const $ = (id) => document.getElementById(id);
-const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAY_LABELS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+const SLOT_LABELS = { lunch: 'Pranzo', dinner: 'Cena' };
+const SLOTS = ['lunch', 'dinner'];
 
 // ---- storage (never fatal: private mode, quota...) ----
 const store = {
@@ -196,7 +239,7 @@ const TIME_FIELDS = ['lunchTime', 'lunchMin', 'dinnerTime', 'dinnerMin'];
 for (const id of TIME_FIELDS) {
   const v = store.get(id);
   if (v != null) $(id).value = v;
-  $(id).addEventListener('change', () => store.set(id, $(id).value));
+  $(id).addEventListener('change', () => { store.set(id, $(id).value); changed(); });
 }
 
 // Dishes the user confirmed before: autocomplete + OCR correction.
@@ -216,60 +259,114 @@ function nextMonday() {
   d.setDate(d.getDate() + ((8 - d.getDay()) % 7)); // today if Monday
   return iso(d);
 }
-function dayDate(i) {
-  const [y, m, d] = $('weekStart').value.split('-').map(Number);
-  return new Date(y, m - 1, d + i).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-}
+const dateOf = (ws, i) => { const [y, m, d] = ws.split('-').map(Number); return new Date(y, m - 1, d + i); };
+const shortDate = (d) => d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // ---- screens ----
 function show(id) {
   for (const s of ['capture', 'working', 'review']) $(s).hidden = s !== id;
+  $('resume').hidden = id !== 'capture' || !store.get('week');
+  if (!$('resume').hidden) {
+    const w = store.get('week');
+    $('resume-text').textContent = `Settimana dal ${shortDate(dateOf(w.weekStart || nextMonday(), 0))}: ${plural(w.days.reduce((n, d) => n + !!d.lunch.text + !!d.dinner.text, 0), 'pasto', 'pasti')}.`;
+  }
   $('error').hidden = true;
   window.scrollTo(0, 0);
 }
 function fail(msg) { show('capture'); $('error').textContent = msg; $('error').hidden = false; }
 
-function renderReview(days, raw, note) {
-  $('weekStart').value ||= nextMonday();
+// ---- the week being edited (saved on every change, so it survives closing the app) ----
+// week: {weekStart, days: [{lunch: {text, edited}, dinner: {...}}] x 7, raw, synced}
+const slotEl = (i, slot) => $(`${DAY_KEYS[i]}-${slot}`);
+function readWeek() {
+  return {
+    weekStart: $('weekStart').value,
+    days: DAY_KEYS.map((_, i) => Object.fromEntries(SLOTS.map((s) => [s, { text: slotEl(i, s).value.trim(), edited: !!slotEl(i, s).dataset.edited }]))),
+    raw: $('raw').textContent,
+    synced: store.get('week')?.synced || null,
+  };
+}
+const readDays = () => readWeek().days.map((d) => ({ lunch: d.lunch.text, dinner: d.dinner.text }));
+const saveWeek = (patch = {}) => store.set('week', { ...readWeek(), ...patch });
+function changed() {
+  if ($('review').hidden) return;
+  saveWeek();
+  const w = store.get('week');
+  if (w.synced && w.synced === w.weekStart) say('Hai modificato la settimana: tocca “Aggiorna Google Calendar” per aggiornare gli eventi.');
+}
+
+function renderReview(week, note) {
+  $('weekStart').value = week.weekStart || $('weekStart').value || nextMonday();
   fillKnown();
-  $('days').replaceChildren(...days.map((d, i) => {
+  picked = null;
+  $('swapHint').hidden = true;
+  $('days').replaceChildren(...week.days.map((d, i) => {
     const el = document.createElement('div');
     el.className = 'day';
-    el.innerHTML = `<h3>${DAY_LABELS[i]} <span class="date"></span></h3>` + ['lunch', 'dinner'].map((slot) => `
+    el.innerHTML = `<h3>${DAY_LABELS[i]} <span class="date"></span></h3>` + SLOTS.map((slot) => `
       <div class="meal">
-        <label for="${DAY_KEYS[i]}-${slot}">${slot}</label>
+        <label for="${DAY_KEYS[i]}-${slot}">${SLOT_LABELS[slot]}</label>
         <input class="dish" id="${DAY_KEYS[i]}-${slot}" list="known" autocomplete="off" autocapitalize="none" spellcheck="false"
-          aria-label="${DAY_LABELS[i]} ${slot}">
+          aria-label="${DAY_LABELS[i]}, ${SLOT_LABELS[slot]}">
+        <button type="button" class="swap" data-day="${i}" data-slot="${slot}" aria-label="Sposta ${SLOT_LABELS[slot].toLowerCase()} di ${DAY_LABELS[i].toLowerCase()}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg>
+        </button>
       </div>`).join('');
-    el.querySelector(`#${DAY_KEYS[i]}-lunch`).value = d.lunch;
-    el.querySelector(`#${DAY_KEYS[i]}-dinner`).value = d.dinner;
+    for (const slot of SLOTS) {
+      const input = el.querySelector(`#${DAY_KEYS[i]}-${slot}`);
+      input.value = d[slot].text;
+      if (d[slot].edited) input.dataset.edited = '1';
+      input.addEventListener('input', () => { input.dataset.edited = '1'; changed(); });
+    }
     return el;
   }));
-  document.querySelectorAll('.dish').forEach((el) => el.addEventListener('input', () => { el.dataset.edited = '1'; }, { once: true }));
   updateDates();
-  $('raw').textContent = raw || '(nothing scanned)';
+  $('raw').textContent = week.raw || '(nessuna scansione)';
   $('review-note').textContent = note;
   $('saved').hidden = true;
+  syncLabel();
   show('review');
+  saveWeek({ synced: week.synced || null });
 }
 function updateDates() {
   if (!$('weekStart').value) return;
-  document.querySelectorAll('.day .date').forEach((el, i) => { el.textContent = `· ${dayDate(i)}`; });
+  document.querySelectorAll('.day .date').forEach((el, i) => { el.textContent = `· ${shortDate(dateOf($('weekStart').value, i))}`; });
 }
-$('weekStart').addEventListener('change', updateDates);
+$('weekStart').addEventListener('change', () => { updateDates(); syncLabel(); changed(); });
 
-const readDays = () => DAY_KEYS.map((k) => ({ lunch: $(`${k}-lunch`).value.trim(), dinner: $(`${k}-dinner`).value.trim() }));
+// Swap two meals: tap ⇅ on one, then on the other.
+let picked = null;
+$('days').addEventListener('click', (e) => {
+  const btn = e.target.closest('.swap');
+  if (!btn) return;
+  const row = btn.closest('.meal'), input = row.querySelector('.dish');
+  if (!picked) { picked = { row, input }; row.classList.add('picked'); $('swapHint').hidden = false; return; }
+  if (picked.input !== input) {
+    [picked.input.value, input.value] = [input.value, picked.input.value];
+    const a = picked.input.dataset.edited, b = input.dataset.edited;
+    if (b) picked.input.dataset.edited = b; else delete picked.input.dataset.edited;
+    if (a) input.dataset.edited = a; else delete input.dataset.edited;
+    changed();
+  }
+  picked.row.classList.remove('picked');
+  picked = null;
+  $('swapHint').hidden = true;
+});
+
+const emptyWeek = () => ({ days: DAY_KEYS.map(() => ({ lunch: { text: '', edited: false }, dinner: { text: '', edited: false } })) });
+const fromDays = (days, raw) => ({ days: days.map((d) => ({ lunch: { text: d.lunch, edited: false }, dinner: { text: d.dinner, edited: false } })), raw });
 
 // ---- scanning ----
 const STATUS = {
-  'loading tesseract core': 'Starting the text reader',
-  'initializing tesseract': 'Starting the text reader',
-  'loading language traineddata': 'Downloading language data (first time only)',
-  'initializing api': 'Starting the text reader',
+  'loading tesseract core': 'Avvio il lettore di testo',
+  'initializing tesseract': 'Avvio il lettore di testo',
+  'loading language traineddata': 'Scarico i dati della lingua (solo la prima volta)',
+  'initializing api': 'Avvio il lettore di testo',
 };
 
 async function loadPhoto(file) {
-  const bmp = await createImageBitmap(file); // applies EXIF orientation
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); // honour the photo's rotation tag
   const s = 2200 / Math.max(bmp.width, bmp.height);
   const w = Math.round(bmp.width * s), h = Math.round(bmp.height * s);
   const canvas = document.createElement('canvas');
@@ -284,12 +381,12 @@ async function loadPhoto(file) {
 async function scan(file) {
   show('working');
   const status = (t, p) => { $('status').textContent = t; if (p != null) $('bar').value = p; };
-  status('Opening photo', 0);
+  status('Apro la foto', 0);
   let worker, rec, lock;
   try {
     lock = await navigator.wakeLock?.request('screen').catch(() => null);
     const { rgba, w, h } = await loadPhoto(file);
-    status('Loading the handwriting reader', 0.02);
+    status('Carico il lettore della scrittura', 0.02);
     const [model, dict] = await Promise.all([
       fetch(`${MODEL}.onnx`).then((r) => r.arrayBuffer()),
       fetch(`${MODEL}.dict.json`).then((r) => r.json()),
@@ -311,15 +408,15 @@ async function scan(file) {
       onProgress: (p, msg) => status(msg, 0.1 + 0.9 * p),
     });
     const raw = res.layout
-      ? res.reads.map((r) => `${DAY_LABELS[r.day]} ${r.slot}${r.found ? '' : ' (no label seen)'}: ${r.tries.map((t) => t.text).join(' | ') || '(blank)'}`).join('\n')
+      ? res.reads.map((r) => `${DAY_LABELS[r.day]}, ${SLOT_LABELS[r.slot].toLowerCase()}${r.found ? '' : ' (etichetta non vista)'}: ${r.tries.map((t) => t.text).join(' | ') || '(vuoto)'}`).join('\n')
       : res.reads[0].text;
     const found = res.days.reduce((n, d) => n + !!d.lunch + !!d.dinner, 0);
-    renderReview(res.days, raw, res.layout
-      ? 'Handwriting is hard to read: fix anything that\'s wrong. Empty meals are skipped.'
-      : `Couldn't find the PRANZO / CENA layout (${found} meals guessed). Try a straighter photo of the whole page, or fix the meals here.`);
+    renderReview({ ...fromDays(res.days, raw), weekStart: nextMonday() }, res.layout
+      ? 'La scrittura a mano è difficile da leggere: correggi quello che non va. I pasti vuoti vengono saltati.'
+      : `Non trovo lo schema PRANZO / CENA (${plural(found, 'pasto indovinato', 'pasti indovinati')}). Prova una foto più dritta di tutta la pagina, oppure correggi qui.`);
   } catch (e) {
     console.error(e);
-    fail(`Scanning failed: ${e.message || e}. Check your connection the first time (the text reader is downloaded once).`);
+    fail(`Scansione non riuscita: ${e.message || e}. La prima volta serve la connessione (il lettore si scarica una volta sola).`);
   } finally {
     await worker?.terminate(); // frees ~100 MB of WebAssembly memory
     await rec?.release();
@@ -332,33 +429,80 @@ for (const id of ['camera', 'gallery']) $(id).addEventListener('change', (e) => 
   e.target.value = '';
   if (f) scan(f);
 });
-$('manual').addEventListener('click', () => renderReview(DAY_KEYS.map(() => ({ lunch: '', dinner: '' })), '', 'Type the meals for the week. Empty meals are skipped.'));
+$('manual').addEventListener('click', () => renderReview({ ...emptyWeek(), weekStart: nextMonday() }, 'Scrivi i pasti della settimana. I pasti vuoti vengono saltati.'));
 $('again').addEventListener('click', () => show('capture'));
+$('resumeBtn').addEventListener('click', () => renderReview(store.get('week'), 'Puoi correggere o scambiare i pasti e poi aggiornare il calendario.'));
+
+// ---- in-app camera: full sensor still (ImageCapture) with a page guide; system camera as fallback ----
+let stream = null, torchOn = false;
+const camTrack = () => stream?.getVideoTracks()[0];
+async function openCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) return $('camera').click();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 4096 } } });
+  } catch { return $('camera').click(); } // no permission / no camera: the system camera app
+  camTrack().applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+  const torch = !!camTrack().getCapabilities?.().torch;
+  $('torch').hidden = !torch; $('torchSpacer').hidden = torch;
+  torchOn = false; $('torch').setAttribute('aria-pressed', 'false');
+  $('video').srcObject = stream;
+  $('cam').hidden = false;
+}
+function closeCamera() {
+  stream?.getTracks().forEach((t) => t.stop());
+  stream = null;
+  $('video').srcObject = null;
+  $('cam').hidden = true;
+}
+$('takePhoto').addEventListener('click', openCamera);
+$('camClose').addEventListener('click', closeCamera);
+$('torch').addEventListener('click', () => {
+  torchOn = !torchOn;
+  $('torch').setAttribute('aria-pressed', String(torchOn));
+  camTrack()?.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(() => {});
+});
+$('shutter').addEventListener('click', async () => {
+  const track = camTrack();
+  if (!track) return;
+  $('shutter').disabled = true;
+  let blob = null;
+  // A real still photo (focus, exposure, full resolution) where the browser supports it.
+  if ('ImageCapture' in window) blob = await new ImageCapture(track).takePhoto(torchOn ? { fillLightMode: 'flash' } : {}).catch(() => null);
+  if (!blob) {
+    const v = $('video'), c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.95));
+  }
+  $('shutter').disabled = false;
+  closeCamera();
+  scan(blob); // the scan straightens sideways photos by itself
+});
 
 // ---- export ----
 const times = () => ({
-  lunchTime: $('lunchTime').value || '12:30', dinnerTime: $('dinnerTime').value || '19:00',
-  lunchMin: +$('lunchMin').value || 45, dinnerMin: +$('dinnerMin').value || 60,
+  lunchTime: $('lunchTime').value || '12:45', dinnerTime: $('dinnerTime').value || '20:00',
+  lunchMin: +$('lunchMin').value || 60, dinnerMin: +$('dinnerMin').value || 60,
 });
 const say = (t) => { $('saved').textContent = t; $('saved').hidden = false; };
 function week() {
-  if (!$('weekStart').value) { $('weekStart').focus(); throw new Error('Pick the week start date first.'); }
+  if (!$('weekStart').value) { $('weekStart').focus(); throw new Error('Scegli prima la data di inizio settimana.'); }
   return $('weekStart').value;
 }
 // Only what the user typed or fixed: unedited OCR guesses could be wrong and would be learned.
 const learn = () => rememberDishes([...document.querySelectorAll('.dish[data-edited]')].map((el) => el.value.trim()).filter(Boolean));
 const count = (days) => days.reduce((a, d) => a + !!d.lunch + !!d.dinner, 0);
-const meals = (n) => `${n} meal${n === 1 ? '' : 's'}`;
+const syncLabel = () => { $('gsyncLabel').textContent = store.get('week')?.synced === $('weekStart').value ? 'Aggiorna Google Calendar' : 'Aggiungi a Google Calendar'; };
 
 $('save').addEventListener('click', () => {
   try {
     const ws = week(), days = readDays();
-    const file = new File([buildICS(days, ws, times())], `meal-plan-${ws}.ics`, { type: 'text/calendar' });
+    const file = new File([buildICS(days, ws, times())], `piano-pasti-${ws}.ics`, { type: 'text/calendar' });
     const url = URL.createObjectURL(file);
     Object.assign(document.createElement('a'), { href: url, download: file.name }).click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     learn();
-    say(`${meals(count(days))} saved to ${file.name}.`);
+    say(`${plural(count(days), 'pasto salvato', 'pasti salvati')} in ${file.name}.`);
   } catch (e) { say(e.message); }
 });
 
@@ -371,34 +515,37 @@ $('gsync').addEventListener('click', async () => {
   $('gsync').disabled = true;
   try {
     const ws = week();
-    say('Connecting to Google…');
+    say('Collegamento a Google…');
     await signIn();
     let cal = store.get('calendar');
     if (!cal) {
-      const list = await calendars();
-      if (!list.length) throw new Error('No Google calendar you can add events to.');
+      const list = await calendars(); // family calendar first
+      if (!list.length) throw new Error('Non c’è nessun calendario Google in cui puoi aggiungere eventi.');
       if ($('calPick').hidden) {
-        $('calendar').replaceChildren(...list.map((c) => new Option(c.primary ? `${c.summary} (personal)` : c.summary, c.id)));
-        $('calendar').value = (list.find((c) => !c.primary) || list[0]).id; // shared calendars first
+        $('calendar').replaceChildren(...list.map((c) => new Option(c.primary ? `${c.summary} (personale)` : c.summary, c.id)));
+        $('calendar').value = list[0].id;
         $('calPick').hidden = false;
-        if (list.length > 1) { say('Pick the calendar, then tap “Add to Google Calendar” again.'); return; }
+        if (list.length > 1) { say('Scegli il calendario, poi tocca di nuovo “Aggiungi a Google Calendar”.'); return; }
       }
       cal = $('calendar').value;
       store.set('calendar', cal);
     }
-    say('Adding the meals…');
+    say('Aggiungo i pasti…');
     const { saved, removed } = await syncWeek(cal, readDays(), ws, times());
     learn();
+    saveWeek({ synced: ws });
+    syncLabel();
     $('calPick').hidden = true;
     $('otherCal').hidden = false;
-    say(`Done: ${meals(saved)} in your calendar${removed ? `, ${removed} removed` : ''}. Syncing this week again updates them.`);
+    say(`Fatto: ${plural(saved, 'pasto', 'pasti')} nel calendario${removed ? `, ${plural(removed, 'tolto', 'tolti')}` : ''}. Se cambi qualcosa, tocca “Aggiorna Google Calendar”.`);
   } catch (e) {
     if (e.status === 404) store.set('calendar', null);
-    say(e.status === 404 ? 'That calendar is gone. Tap again to pick another.' : e.message);
+    say(e.status === 404 ? 'Quel calendario non c’è più: tocca di nuovo per sceglierne un altro.' : e.message);
   } finally { $('gsync').disabled = false; }
 });
-$('otherCal').addEventListener('click', () => { store.set('calendar', null); $('otherCal').hidden = true; say('Tap “Add to Google Calendar” to pick a calendar.'); });
+$('otherCal').addEventListener('click', () => { store.set('calendar', null); $('otherCal').hidden = true; say('Tocca “Aggiungi a Google Calendar” per scegliere un calendario.'); });
 
+show('capture');
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>

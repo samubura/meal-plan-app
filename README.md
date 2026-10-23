@@ -5,14 +5,19 @@ Monday to Sunday) and puts the meals straight into a shared Google calendar.
 It is fully static and free: no server, no paid services, and the photo never leaves the phone.
 Handwriting is read in the browser by a small PaddleOCR model.
 
-## Use it
-1. **Take photo** opens the phone's own camera app (full quality: on a Pixel, HDR+ and autofocus).
-   **Choose photo** picks one from the gallery.
-2. A few seconds later the week appears. Fix anything that's wrong. Dishes you type or fix are
-   remembered: they're suggested while typing and help the next scans read your writing.
-3. **Add to Google Calendar**. The first time, sign in and pick the shared calendar. After that it's one tap.
-   Syncing the same week again updates the events instead of duplicating them, and a meal you
-   cleared is removed. **Download .ics file** is there as a fallback.
+## Use it (the app is in Italian)
+1. **Scatta una foto** opens the in-app camera: a page-shaped guide, a torch for dim kitchens, and a full
+   resolution still photo. **Scegli dalla galleria** picks an existing photo. Sideways or upside-down
+   photos are straightened automatically.
+2. A few seconds later the week appears. Fix anything that's wrong, and swap meals with ⇅ (tap one, then
+   the other). Dishes you type or fix are remembered: they're suggested while typing and help the
+   next scans read your writing.
+3. **Aggiungi a Google Calendar**. The first time, sign in and pick the calendar (a family-group
+   "Family" calendar is offered first). Events are "Pranzo: …" 12:45–13:45 and "Cena: …" 20:00–21:00
+   (change it under *Orari*).
+4. The week stays saved on the phone: reopen it with **Riprendi la settimana**, change or swap meals and
+   tap **Aggiorna Google Calendar**. The same events are updated, and a meal you cleared is removed.
+   **Scarica il file .ics** is there as a fallback.
 
 The first scan downloads the reader once (the 8 MB model, its runtime and Tesseract's data: roughly
 20–30 MB). After that the scan works offline; only the calendar sync needs internet.
@@ -48,14 +53,17 @@ In testing mode Google may ask you to approve again after a while.
 ## How the scan works
 1. **Layout** (`app/lib.js`, `findLayout`): Tesseract finds the printed day names and the PRANZO/CENA
    labels on the whole page. A grid of 7 days × 2 meals is fitted through them, and missed labels are
-   predicted. This finds the right row for ~97% of meals.
+   predicted. This finds the right row for ~96% of meals. If the labels aren't found, the photo is
+   tried turned by 90°, 270° and 180°, so sideways photos work too.
 2. **Line images** (`traceRow`, `tighten`): each meal row follows the handwriting (which often slopes),
    is cropped to its ink and contrast-stretched.
 3. **Reading** (`app/ocr.js`): PaddleOCR PP-OCRv5 Latin recognizer (Apache-2.0) in onnxruntime-web, one line at a time.
 4. **Context-aware decoding**: per word, the reader's character probabilities (CTC) score the
-   raw reading against nearby words from an Italian food vocabulary. Once you have remembered dishes,
-   a word-pair model built from your own dishes ("speck e zucchine") picks the likeliest whole line.
-   A remembered dish replaces the line when it explains the handwriting well.
+   raw reading against nearby words from an Italian food vocabulary and your remembered dishes. A
+   word-pair model built from your own dishes ("speck e zucchine") picks the likeliest whole line.
+   "/" (two options, or two things in one slot) is handled explicitly: the reader often sees it as
+   l, |, 1 or [, so "pizzalmamma" can come out as "pizza / mamma". A remembered dish replaces the
+   line when it explains the handwriting well.
 
 ## Measured accuracy
 14 real pages (3 handwriting styles, English and Italian notebooks), 196 meals. "Exact" means the whole
@@ -68,9 +76,12 @@ only gets the dishes from the *other* pages.
 | PaddleOCR recognizer | 183 | 93 | 101 |
 | + lines cropped to the ink | 189 | 108 | 110 |
 | + decoding with the model's probabilities | 187 | 122 (62%) | 134 |
-| + word-pair model from your dishes (shipped) | 190 (97%) | 122 (62%) | **139 (71%)** |
+| + word-pair model from your dishes | 190 (97%) | 122 (62%) | 139 (71%) |
+| + slash handling, scored slash-aware (shipped) | 189 (96%) | 118 (60%) | **136 (69%)** |
 
-With remembered dishes: 84% exact on dishes written before, 62% on new ones.
+The last row uses stricter scoring: "pizza mamma" no longer counts as "pizza / mamma". Dishes written
+with a "/" went from 0/24 exact to 7/24 (11/24 with remembered dishes). Turned photos give the same
+results as upright ones.
 
 Measured and **not** shipped:
 - **Fine-tuning the recognizer on these pages** (`tools/train/`, 4-fold cross-validation on unseen pages):

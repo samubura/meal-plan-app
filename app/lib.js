@@ -207,8 +207,8 @@ export function buildICS(days, weekStart, opts, now = new Date()) {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Meal Plan Scanner//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
   days.forEach((d, i) => {
     for (const [slot, label, time, mins] of [
-      ['lunch', 'Lunch', opts.lunchTime, opts.lunchMin],
-      ['dinner', 'Dinner', opts.dinnerTime, opts.dinnerMin],
+      ['lunch', 'Pranzo', opts.lunchTime, opts.lunchMin],
+      ['dinner', 'Cena', opts.dinnerTime, opts.dinnerMin],
     ]) {
       const dish = (d[slot] || '').trim();
       if (!dish) continue;
@@ -559,33 +559,61 @@ export function scaleGray({ gray, w, h }, s) {
   return { gray: out, w: W, h: H };
 }
 
+const IT_DAYS = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica'];
+
+// Rotate RGBA pixels by q quarter turns clockwise (q = 1, 2, 3).
+export function rotateRGBA(rgba, w, h, q) {
+  const W = q % 2 ? h : w, H = q % 2 ? w : h, out = new Uint8ClampedArray(rgba.length), px = new Uint32Array(rgba.buffer, rgba.byteOffset, w * h), o = new Uint32Array(out.buffer);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const [X, Y] = q === 1 ? [h - 1 - y, x] : q === 2 ? [w - 1 - x, h - 1 - y] : [y, w - 1 - x];
+    o[Y * W + X] = px[y * w + x];
+  }
+  return { rgba: out, w: W, h: H };
+}
+
 // Row variants tried per dish (image, scale); pickDish chooses among their readings.
 const ROW_VARIANTS = [['gray', 0.6], ['gray', 0.8], ['bin', 0.6], ['bin', 0.8]];
 
 // rgba: RGBA pixels of the photo, longest side 2200 px.
 // recognize(pgmBytes, psm, withWords) -> Promise<{text, conf, words}> (thin wrapper over tesseract.js).
-// Returns {days, reads, layout}: reads has every OCR variant per row, for debugging and tuning.
+// Returns {days, reads, layout, rotated}: reads has every OCR variant per row, for debugging and
+// tuning; rotated = quarter turns applied to make the page upright.
 // dishes: dishes the user corrected before (personal dictionary).
 // readLine(img {gray, w, h}) -> Promise<{text, conf}>: a line recognizer for the dishes (ocr.js);
 // without it, Tesseract reads the dishes too. lineVariants: which images readLine gets per row
 // (bench: max-channel gray beats binary and luminance); tight: options for tighten().
 // onBand(row, img): debug hook, gets every line image that is read.
-// decode: ocr.js decodeLine (vocabulary-aware decoding of readLine's frames).
+// decode: ocr.js decoderFor(dishes) (context-aware decoding of readLine's frames).
 export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress = () => {}, readLine, decode, lineVariants = ['gray'], onBand, tight = {} } = {}) {
-  const gray = toGray(rgba, 'max');
-  const lum = readLine && lineVariants.includes('lum') ? toGray(rgba, 'lum') : null;
-  const bin = adaptiveThreshold(gray, w, h, { radius: 1 / 32, t: 0.15 });
-  const page = toPGM({ gray: bin, w, h });
   const variants = readLine ? lineVariants : ROW_VARIANTS;
-  const total = 2 + 14 * variants.length;
-  let done = 0;
-  const tick = (msg, n = 1) => onProgress((done += n) / total, msg);
+  let total = 2 + 14 * variants.length, done = 0;
+  const tick = (msg, n = 1) => onProgress(Math.min(1, (done += n) / total), msg);
+  const prep = (img) => {
+    const gray = toGray(img.rgba, 'max'), bin = adaptiveThreshold(gray, img.w, img.h, { radius: 1 / 32, t: 0.15 });
+    return { ...img, gray, bin, page: toPGM({ gray: bin, w: img.w, h: img.h }) };
+  };
+  const labelsFound = (rows) => (rows ? rows.filter((r) => r.found).length : -1);
+
+  // Sideways or upside-down photo: the orientation where the most day/meal labels are found wins.
+  // Upright photos stop after the first try.
+  let best = null;
+  for (const q of [0, 1, 3, 2]) {
+    if (q) { total++; tick('Raddrizzo la foto'); }
+    const img = prep(q ? rotateRGBA(rgba, w, h, q) : { rgba, w, h });
+    const a = await recognize(img.page, '11', true);
+    const n = labelsFound(findLayout(a.words, img.w));
+    if (!best || n > best.n) best = { ...img, a, n, q };
+    if (n >= 6) break;
+  }
+  tick('Cerco i giorni');
+  ({ rgba, w, h } = best);
+  const { gray, bin, page, a } = best;
+  const lum = readLine && lineVariants.includes('lum') ? toGray(rgba, 'lum') : null;
 
   // Two page layouts find different subsets of the labels; together they find most of them.
-  const a = await recognize(page, '11', true); tick('Finding the days');
-  const b = await recognize(page, '3', true); tick('Finding the meals');
+  const b = await recognize(page, '3', true); tick('Cerco i pasti');
   const rows = findLayout([...a.words, ...b.words], w);
-  if (!rows) return { days: parsePlan(b.text), reads: [{ text: b.text }], layout: false };
+  if (!rows) return { days: parsePlan(b.text), reads: [{ text: b.text }], layout: false, rotated: best.q };
 
   const days = DAY_KEYS.map(() => ({ lunch: '', dinner: '' }));
   const reads = [];
@@ -597,7 +625,7 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
     const probe = traceRow(bin, w, h, x0, right - 4, r.y, half);
     const ink = probe.gray.reduce((n, v) => n + (v === 0), 0) / probe.gray.length;
     const tries = [];
-    const label = `Reading ${DAY_NAMES[r.day][0]} ${r.slot}`;
+    const label = `Leggo ${IT_DAYS[r.day]}, ${r.slot === 'lunch' ? 'pranzo' : 'cena'}`;
     if (ink <= 0.004) tick(label, variants.length);
     else if (readLine) for (const v of variants) {
       let band = v === 'bin' ? probe : traceRow(bin, w, h, x0, right - 4, r.y, half, v === 'lum' ? lum : gray);
@@ -614,13 +642,13 @@ export async function scanPlan(rgba, w, h, recognize, { dishes = [], onProgress 
     }
     reads.push({ day: r.day, slot: r.slot, found: r.found, ink: +ink.toFixed(4), tries });
   }
-  return { days: daysFromReads(reads, dishes, { decode }), reads, layout: true };
+  return { days: daysFromReads(reads, dishes, { decode }), reads, layout: true, rotated: best.q };
 }
 
 const decodeText = (decode, t, vocab, dishes, k) => decode(t.frames, { vocab, dishes, original: t.text, ...(k && { k }) });
 
 // reads (from scanPlan) -> days. Kept separate so tools can re-run it on saved readings.
-// decode: ocr.js decodeLine, for readings that carry the recognizer's frames.
+// decode: ocr.js decoderFor(dishes), for readings that carry the recognizer's frames.
 export function daysFromReads(reads, dishes = [], { k = PICK, decode, dk } = {}) {
   const vocab = vocabFor(dishes);
   const days = DAY_KEYS.map(() => ({ lunch: '', dinner: '' }));
