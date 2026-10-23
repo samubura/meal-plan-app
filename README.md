@@ -6,18 +6,20 @@ It is fully static and free: no server, no paid services, and the photo never le
 Handwriting is read in the browser by a small PaddleOCR model.
 
 ## Use it (the app is in Italian)
-1. **Scatta una foto** opens the in-app camera: a page-shaped guide, a torch for dim kitchens, and a full
-   resolution still photo. **Scegli dalla galleria** picks an existing photo. Sideways or upside-down
-   photos are straightened automatically.
-2. A few seconds later the week appears. Fix anything that's wrong, and swap meals with ⇅ (tap one, then
-   the other). Dishes you type or fix are remembered: they're suggested while typing and help the
-   next scans read your writing.
-3. **Aggiungi a Google Calendar**. The first time, sign in and pick the calendar (a family-group
-   "Family" calendar is offered first). Events are "Pranzo: …" 12:45–13:45 and "Cena: …" 20:00–21:00
-   (change it under *Orari*).
-4. The week stays saved on the phone: reopen it with **Riprendi la settimana**, change or swap meals and
-   tap **Aggiorna Google Calendar**. The same events are updated, and a meal you cleared is removed.
-   **Scarica il file .ics** is there as a fallback.
+1. **Nuova settimana › Scatta una foto** opens the in-app camera: a page-shaped guide, a torch for dim
+   kitchens, a full-resolution still photo. **Scegli dalla galleria** picks an existing one. Sideways or
+   upside-down photos are straightened automatically.
+2. **Controlla i pasti**: a few seconds later the week appears; fix anything that's wrong, then
+   **Salva e sincronizza**. The first time, sign in and pick the calendar (a family-group "Family"
+   calendar is offered first). Events are "Pranzo: …" 12:45–13:45 and "Cena: …" 20:00–21:00.
+3. **Piano** (the home screen) keeps the week. Drag a meal by its ≡ handle onto another slot to swap them,
+   tap a meal to edit it (or move it with "Sposta in"). The button at the top shows **Sincronizza** when
+   there are changes and **Sincronizzato** when Google Calendar is up to date; syncing again updates the
+   same events and removes the ones you emptied. ⋮ has the times, the calendar, the .ics download and
+   what the scan read.
+
+Dishes you type or fix are remembered: they're suggested while typing and help the next scans read your
+writing. Android's back button closes sheets and screens like in a native app.
 
 The first scan downloads the reader once (the 8 MB model, its runtime and Tesseract's data: roughly
 20–30 MB). After that the scan works offline; only the calendar sync needs internet.

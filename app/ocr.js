@@ -159,7 +159,7 @@ export function makeLM(counts, extra = [], dishes = [], { extraN = 3, dishN = 10
 }
 
 // ponytail: tuned on private/dataset with leave-one-out dishes (tools/lm-tune.mjs --grid).
-export const DECODE = { edit: 0.34, lm: 0.75, oov: -16, keep: 6, dish: 8, slash: 2 };
+export const DECODE = { edit: 0.34, lm: 0.75, oov: -16, keep: 6, dish: 8, slash: 2, endL: 6 };
 
 const ctcText = (s) => fold(s).replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ').trim();
 
@@ -173,7 +173,9 @@ export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' 
   if (words.length > 1 && /[:.;-]$/.test(words[0].word) && (matchMeal(words[0].word) || core(words[0].word).length <= 4)) words = words.slice(1);
   const caseOf = new Map(original.split(/[\s/|]+/).map((w) => [fold(w).replace(/[^a-z0-9]/g, ''), w.replace(/^[^\p{L}\p{N}(]+|[^\p{L}\p{N})?]+$/gu, '')]));
   const maxD = (n) => Math.max(1, Math.ceil(n * k.edit));
-  const word = (c) => ({ t: c, text: lm.known(c) ? c : caseOf.get(c) ?? c, oov: !lm.known(c) });
+  // Unknown words keep the writer's capitals ("Toscana"), also when they are a piece of a split word.
+  const caseFor = (c) => caseOf.get(c) ?? [...caseOf].find(([f]) => f.startsWith(c))?.[1].slice(0, c.length) ?? c;
+  const word = (c) => ({ t: c, text: lm.known(c) ? c : caseFor(c), oov: !lm.known(c) });
   // Options for a piece of a split word: known words near it, or itself when long enough.
   const opts = (c, rawOk) => {
     if (!c) return [];
@@ -182,7 +184,7 @@ export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' 
     return rawOk && c.length >= 2 ? [...n, word(c)] : n;
   };
   const cols = [];
-  for (const w of words) {
+  for (const [wi, w] of words.entries()) {
     const raw = w.word, c = core(raw);
     if (raw === '/' || /^[|l1[\]!]$/.test(raw)) { cols.push([{ parts: ['/'], s: 0 }]); continue; }
     if (raw === '+' || /^x\d$/.test(raw)) { cols.push([{ parts: [{ t: null, text: raw }], s: 0 }]); continue; }
@@ -197,17 +199,22 @@ export function decodeLine(frames, { lm, dishes = [], k = DECODE, original = '' 
     }
     // A slash read as a letter: "pizzalmamma", "comunital", "lpanino".
     const lower = fold(raw);
+    // Long Italian words practically never end in "l": an unknown "toscanal" is "toscana /".
+    // Only before another word: a final "cocktail" stays a cocktail.
+    const endsLikeSlash = wi < words.length - 1 && c.length >= 5 && /[l1|]$/.test(lower) && !lm.known(c);
     for (let p = 0; p < lower.length; p++) {
       if (!SLASHY.includes(lower[p]) || lower[p] === '/') continue;
       const L = core(lower.slice(0, p)), R = core(lower.slice(p + 1));
       if (!L && !cols.length) continue; // nothing before a leading slash
       const ls = L ? opts(L, L.length >= 4) : [null], rs = R ? opts(R, true) : [null];
       for (const l of ls) for (const r of rs) {
-        if ((l?.oov ?? true) && (r?.oov ?? true)) continue; // at least one side must be a known word
+        // At least one side must be a known word, except a trailing slash after an unknown name
+        // ("Toscanal" = "Toscana /").
+        if ((l?.oov ?? true) && (r?.oov ?? true) && !(r == null && endsLikeSlash)) continue;
         cands.push([l, '/', r].filter(Boolean));
       }
     }
-    const scored = cands.map((parts) => ({ parts, s: score(parts) - (parts.includes('/') ? k.slash : 0) }));
+    const scored = cands.map((parts) => ({ parts, s: score(parts) - (parts.includes('/') ? k.slash : 0) - (endsLikeSlash && !parts.includes('/') && parts.length === 1 && parts[0].oov ? k.endL : 0) }));
     scored.sort((a, b) => b.s - a.s);
     cols.push(scored.slice(0, k.keep));
   }

@@ -111,6 +111,9 @@ test('CTC decoding: model probabilities pick the vocabulary word', async () => {
   const F = (s) => [...s].map((c) => (c === '_' ? { '': 0.9 } : { [c]: 0.7, '': 0.2 }));
   assert.equal(decoderFor([])(F('p_i_z_z_a_l_m_a_m_m_a')), 'pizza / mamma');
   assert.equal(decoderFor([])(F('p_i_z_z_a_/_m_a_m_m_a')), 'pizza / mamma');
+  // An unknown name with a trailing slash read as "l", keeping the writer's capitals.
+  assert.equal(decoderFor([])(F('t_o_s_c_a_n_a_l_ _m_a_m_m_a'), { original: 'Toscanal mamma' }), 'Toscana / mamma');
+  assert.equal(decoderFor([])(F('c_o_c_k_t_a_i_l')), 'cocktail');
 });
 
 test('Google Calendar event ids: stable and base32hex', async () => {

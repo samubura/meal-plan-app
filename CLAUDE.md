@@ -6,9 +6,11 @@ The user is Italian (talks to me in Italian) and uses an Android phone; UI is It
 
 ## Layout
 - `app/` = everything published (Pages workflow `.github/workflows/pages.yml` uploads only this folder).
-  - `index.html`: UI (Italian) + browser glue: in-app camera (getUserMedia + ImageCapture, system camera
-    fallback), canvas scaling, tesseract.js worker, onnxruntime-web, review grid with ⇅ swap, saved week
-    (localStorage `mealplan.week`, resume + re-sync), export/sync. Defaults 12:45/60 and 20:00/60.
+  - `index.html`: app UI (Italian, Material-like) + browser glue. Screens on the history stack (home > scan >
+    working/review): `home` = the saved plan (localStorage `mealplan.week`; drag ≡ to swap slots, tap = edit
+    sheet with "Sposta in", sync pill dirty/clean via a snapshot), `scan`, `working`, `review` (first sync);
+    bottom sheets (edit, settings, calendar pick), snackbar. In-app camera (getUserMedia + ImageCapture,
+    system camera fallback). Defaults 12:45/60 and 20:00/60. `tools/ui-check.py` drives the whole flow.
   - `lib.js`: pure logic (no DOM), shared with Node tools: image prep, `findLayout`, `traceRow`, `tighten`,
     `parsePlan` (fallback), `FOOD_WORDS`, `correctDish`/`pickDish`/`snapDish` (Tesseract-era path),
     `scanPlan(rgba, w, h, recognize, {readLine, decode, dishes, ...})`, `daysFromReads`, `buildICS`.

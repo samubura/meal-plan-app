@@ -418,7 +418,7 @@ avocado mais zucca olive capperi minestrone minestra zuppa vellutata crema brodo
 caprese parmigiana gratin gratinate grigliata grigliate griglia forno padella piastra vapore
 bollite ripieni ripiene ripieno impanato impanate panati fredda freddo freddi calda caldo
 mista misto miste misti cena pranzo avanzi asporto fuori ristorante sushi kebab poke piadine
-hamburger hot dog tacos burrito curry carrozza rustica rustico milanese fresco fresca patatine robiola
+hamburger hot dog tacos burrito curry cocktail brunch carrozza rustica rustico milanese fresco fresca patatine robiola
 fregola tofu salata salato salate rossa rosse grigliati grigliato vegetali vegetale veg vegano vegetariano
 pomodorini bagel findus insalate omelettes cosce coscia arrosticini cappuccino colazione tigelle crescentine
 yogurt frutta macedonia gelato dolce torta biscotti

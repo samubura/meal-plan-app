@@ -1,7 +1,7 @@
-"""Headless UI check at phone size: serves app/, scans a dataset photo, exports the .ics and syncs
-to a mocked Google Calendar.
+"""Headless UI check at phone size: serves app/, scans a dataset photo, reviews, syncs to a mocked
+Google Calendar, drags a meal onto another slot, edits one, re-syncs, reloads.
 Usage: python3 tools/ui-check.py OUT_DIR [photo]   (needs `pip install playwright && playwright install chromium`)"""
-import http.server, pathlib, re, sys, threading, time, functools
+import functools, http.server, json, pathlib, re, sys, threading, time
 from playwright.sync_api import sync_playwright
 
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -14,95 +14,126 @@ srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 url = f'http://127.0.0.1:{srv.server_port}/'
 
+calls = []
+def gapi(route):
+    r = route.request
+    calls.append((r.method, r.url.split('/calendar/v3')[1], r.post_data))
+    if 'calendarList' in r.url:
+        return route.fulfill(json={'items': [{'id': 'me@x', 'summary': 'Me', 'primary': True}, {'id': 'family@group', 'summary': 'Family'}]})
+    if r.method == 'POST' and r.url.endswith('/events') and '"id":"meal20261026l"' in (r.post_data or ''):
+        return route.fulfill(status=409, json={})  # already there: the app must update it
+    if r.method == 'DELETE':
+        return route.fulfill(status=404, json={})
+    return route.fulfill(json={})
+
+def sent_since(n):
+    return {json.loads(c[2])['id']: json.loads(c[2])['summary'] for c in calls[n:] if c[0] in ('POST', 'PUT') and c[2]}
+
+def wait_snack(page, text):
+    page.wait_for_function(f'document.querySelector("#snack").classList.contains("show") && document.querySelector("#snack").textContent.includes({json.dumps(text)})')
+    return page.text_content('#snack')
+
+def dish(page, i):
+    return page.text_content(f'.meal[data-i="{i}"] .dishname')
+
 with sync_playwright() as p:
     b = p.chromium.launch(args=['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'])
-    for scheme in ('light', 'dark'):
-        ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, color_scheme=scheme,
-                            is_mobile=True, has_touch=True, accept_downloads=True)
-        page = ctx.new_page()
-        errors = []
-        page.on('pageerror', lambda e: errors.append(str(e)))
-        page.on('console', lambda m: m.type == 'error' and errors.append(m.text))
-        # Pretend a client ID is configured and Google sign-in grants a token at once.
-        page.route('**/gcal.js', lambda r: r.fulfill(content_type='text/javascript',
-            body=re.sub(r"export const CLIENT_ID = '[^']*';", "export const CLIENT_ID = 'test';", (root / 'app' / 'gcal.js').read_text())))
-        page.route('https://accounts.google.com/gsi/client', lambda r: r.fulfill(content_type='text/javascript', body=
-            "window.google={accounts:{oauth2:{initTokenClient:(o)=>({requestAccessToken:()=>setTimeout(()=>o.callback({access_token:'t',expires_in:3600}),10)})}}};"))
-        page.goto(url)
-        page.screenshot(path=out / f'1-capture-{scheme}.png')
-        if scheme == 'light':  # in-app camera (Chromium's fake camera): opens, shows the guide, closes
-            page.click('#takePhoto'); page.wait_for_selector('#cam:not([hidden])')
-            page.wait_for_timeout(800); page.screenshot(path=out / '0-camera.png')
-            page.click('#camClose'); assert page.is_hidden('#cam')
-        if scheme == 'dark':  # layout only; the scan itself ran in light mode
-            page.click('#manual'); page.screenshot(path=out / '3-review-dark.png', full_page=True)
-            ctx.close(); continue
-        t0 = time.time()
-        page.set_input_files('#gallery', str(photo))
-        page.wait_for_selector('#working:not([hidden])')
-        page.wait_for_timeout(1500)
-        page.screenshot(path=out / '2-working.png')
-        page.wait_for_selector('#review:not([hidden])', timeout=300_000)
-        print(f'scan took {time.time() - t0:.1f}s in headless Chromium')
-        page.screenshot(path=out / '3-review.png', full_page=True)
-        vals = page.eval_on_selector_all('.dish', 'els => els.map(e => e.value)')
-        for i in range(7): print(f'  {i} L: {vals[2*i]!r:40} D: {vals[2*i+1]!r}')
-        page.fill('#wed-dinner', 'carne e zucchine')  # an edit: only edited dishes are remembered
-        # Google Calendar sync against mocked Google endpoints.
-        calls = []
-        def gapi(route):
-            r = route.request
-            calls.append((r.method, r.url.split('/calendar/v3')[1], r.post_data))
-            if 'calendarList' in r.url:
-                return route.fulfill(json={'items': [{'id': 'me@x', 'summary': 'Me', 'primary': True}, {'id': 'family@group', 'summary': 'Family'}]})
-            if r.method == 'POST' and r.url.endswith('/events') and '"id":"meal20261026l"' in (r.post_data or ''):
-                return route.fulfill(status=409, json={})
-            if r.method == 'DELETE':
-                return route.fulfill(status=404, json={})
-            return route.fulfill(json={})
-        page.route('https://www.googleapis.com/calendar/v3/**', gapi)
-        with page.expect_download() as dl:
-            page.click('#save')
-        dl.value.save_as(out / dl.value.suggested_filename)
-        page.wait_for_selector('#saved:not([hidden])')
-        page.click('#gsync')
-        page.wait_for_selector('#calPick:not([hidden])')
-        assert page.input_value('#calendar') == 'family@group'
-        page.screenshot(path=out / '4-pick-calendar.png', full_page=True)
-        page.click('#gsync')
-        page.wait_for_selector('#saved:has-text("Fatto:")')
-        print('sync:', page.text_content('#saved'))
-        page.screenshot(path=out / '5-synced.png', full_page=True)
-        ev = [c for c in calls if '/events' in c[1]]
-        import json as _j, re as _re
-        posts = [_j.loads(c[2]) for c in ev if c[0] == 'POST']
-        assert all(_re.fullmatch(r'meal2026\d{4}[ld]', p['id']) for p in posts), posts
-        assert all(p['start']['timeZone'] and p['summary'].startswith(('Pranzo: ', 'Cena: ')) for p in posts)
-        assert any(c[0] == 'PUT' and c[1].endswith('/meal20261026l') for c in ev), 'conflict must update'
-        print('requests:', {m: sum(c[0] == m for c in ev) for m in ('POST', 'PUT', 'DELETE')}, '| example', posts[0])
-        n = len(calls)
-        page.click('#gsync'); page.wait_for_function('document.querySelector("#saved").textContent.startsWith("Fatto:")')
-        assert not any('calendarList' in c[1] for c in calls[n:]), 'second sync reuses the saved calendar'
-        # Swap Monday lunch and Tuesday dinner, sync again: the same event ids get the swapped dishes.
-        mon, tue = page.input_value('#mon-lunch'), page.input_value('#tue-dinner')
-        page.click('.swap[data-day="0"][data-slot="lunch"]'); page.click('.swap[data-day="1"][data-slot="dinner"]')
-        assert (page.input_value('#mon-lunch'), page.input_value('#tue-dinner')) == (tue, mon)
-        assert page.text_content('#gsyncLabel') == 'Aggiorna Google Calendar'
-        n = len(calls)
-        page.click('#gsync'); page.wait_for_function('document.querySelector("#saved").textContent.startsWith("Fatto:")')
-        sent = {(_j.loads(c[2]) if c[2] else {}).get('id'): _j.loads(c[2])['summary'] for c in calls[n:] if c[0] in ('POST', 'PUT') and c[2]}
-        assert sent['meal20261026l'] == f'Pranzo: {tue}' and sent['meal20261027d'] == f'Cena: {mon}', sent
-        print('swap + re-sync: ok')
-        # The week survives closing the app.
-        page.reload(); page.wait_for_selector('#resume:not([hidden])')
-        page.screenshot(path=out / '6-resume.png')
-        page.click('#resumeBtn')
-        assert page.input_value('#mon-lunch') == tue and page.input_value('#wed-dinner') == 'carne e zucchine'
-        print('resume after reload: ok')
-        print('saved', dl.value.suggested_filename, 'remembered dishes:', page.evaluate("JSON.parse(localStorage.getItem('mealplan.dishes')).length"))
-        overflow = page.evaluate('document.documentElement.scrollWidth > window.innerWidth')
-        print('horizontal overflow:', overflow)
-        print('errors:', errors or 'none')
-        ctx.close()
+    ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, accept_downloads=True)
+    page = ctx.new_page()
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    # A client ID is configured and Google sign-in grants a token at once; the Calendar API is mocked.
+    page.route('**/gcal.js', lambda r: r.fulfill(content_type='text/javascript',
+        body=re.sub(r"export const CLIENT_ID = '[^']*';", "export const CLIENT_ID = 'test';", (root / 'app' / 'gcal.js').read_text())))
+    page.route('https://accounts.google.com/gsi/client', lambda r: r.fulfill(content_type='text/javascript', body=
+        "window.google={accounts:{oauth2:{initTokenClient:(o)=>({requestAccessToken:()=>setTimeout(()=>o.callback({access_token:'t',expires_in:3600}),10)})}}};"))
+    page.route('https://www.googleapis.com/calendar/v3/**', gapi)
+
+    # 1. First launch: the scan screen; the in-app camera opens and closes.
+    page.goto(url)
+    page.wait_for_selector('#scan:not([hidden])')
+    page.screenshot(path=out / '1-scan.png')
+    page.click('#takePhoto'); page.wait_for_selector('#cam:not([hidden])'); page.wait_for_timeout(600)
+    page.screenshot(path=out / '2-camera.png')
+    page.click('#camClose'); assert page.is_hidden('#cam')
+
+    # 2. Scan a real photo -> review.
+    t0 = time.time()
+    page.set_input_files('#gallery', str(photo))
+    page.wait_for_selector('#working:not([hidden])'); page.wait_for_timeout(1200)
+    page.screenshot(path=out / '3-working.png')
+    page.wait_for_selector('#review:not([hidden])', timeout=300_000)
+    print(f'scan took {time.time() - t0:.1f}s in headless Chromium')
+    page.screenshot(path=out / '4-review.png', full_page=True)
+    page.fill('#r-wed-dinner', 'carne e zucchine')
+
+    # 3. Save and sync: pick the calendar (Family first), back on the plan.
+    page.click('#saveSync')
+    page.wait_for_selector('#calSheet.open')
+    assert page.locator('#calList label').first.text_content().startswith('Family')
+    page.screenshot(path=out / '5-calendar.png')
+    page.click('#calOk')
+    print('sync:', wait_snack(page, 'Fatto'))
+    assert page.is_visible('#home') and page.text_content('#syncText') == 'Sincronizzato'
+    page.wait_for_timeout(400)
+    page.screenshot(path=out / '6-plan.png', full_page=True)
+    posts = [json.loads(c[2]) for c in calls if c[0] == 'POST' and c[2]]
+    assert all(re.fullmatch(r'meal2026\d{4}[ld]', x['id']) and x['summary'].startswith(('Pranzo: ', 'Cena: ')) and x['start']['timeZone'] for x in posts)
+    assert any(c[0] == 'PUT' and c[1].endswith('/meal20261026l') for c in calls), 'conflict must update'
+    print('first sync:', {m: sum(c[0] == m for c in calls) for m in ('POST', 'PUT', 'DELETE')}, '| e.g.', posts[0]['summary'], posts[0]['start']['dateTime'])
+
+    # 4. Drag Monday lunch (slot 0) onto Tuesday dinner (slot 3).
+    a, d = dish(page, 0), dish(page, 3)
+    h = page.locator('[data-drag="0"]').bounding_box()
+    tgt = page.locator('.meal[data-i="3"]').bounding_box()
+    page.mouse.move(h['x'] + h['width'] / 2, h['y'] + h['height'] / 2); page.mouse.down()
+    for k in range(1, 11):
+        page.mouse.move(h['x'] + h['width'] / 2, h['y'] + h['height'] / 2 + (tgt['y'] + tgt['height'] / 2 - h['y'] - h['height'] / 2) * k / 10)
+        page.wait_for_timeout(30)
+    page.screenshot(path=out / '7-dragging.png')
+    page.mouse.up()
+    assert (dish(page, 0), dish(page, 3)) == (d, a), (dish(page, 0), dish(page, 3))
+    assert page.text_content('#syncText') == 'Sincronizza'
+    print('drag:', repr(a), '<->', repr(d))
+
+    # 5. Edit Monday dinner in the sheet.
+    page.click('.meal[data-i="1"] .open'); page.wait_for_selector('#editSheet.open')
+    page.fill('#editText', 'pesce e patate')
+    page.screenshot(path=out / '8-edit.png')
+    page.click('#editSave'); page.wait_for_timeout(300)
+    assert dish(page, 1) == 'pesce e patate'
+
+    # 6. Re-sync: the same event ids carry the new dishes.
+    n = len(calls)
+    page.click('#syncBtn'); wait_snack(page, 'Fatto')
+    sent = sent_since(n)
+    assert sent['meal20261026l'] == f'Pranzo: {d}' and sent['meal20261027d'] == f'Cena: {a}' and sent['meal20261026d'] == 'Cena: pesce e patate', sent
+    assert not any('calendarList' in c[1] for c in calls[n:]), 'the chosen calendar is remembered'
+    print('re-sync: ok')
+
+    # 7. Settings sheet, closed by the back button.
+    page.click('#menuBtn'); page.wait_for_selector('#settingsSheet.open')
+    assert page.text_content('#calName') == 'Family'
+    page.screenshot(path=out / '9-settings.png')
+    page.go_back(); page.wait_for_timeout(300)
+    assert not page.is_visible('#settingsSheet') and page.is_visible('#home')
+
+    # 8. Reload: the plan is still there.
+    page.reload(); page.wait_for_selector('#home:not([hidden])')
+    assert dish(page, 0) == d and dish(page, 1) == 'pesce e patate' and page.text_content('#syncText') == 'Sincronizzato'
+    print('reload: ok')
+    print('horizontal overflow:', page.evaluate('document.documentElement.scrollWidth > window.innerWidth'))
+    print('page errors:', errors or 'none')
+    ctx.close()
+
+    # Dark mode, same plan.
+    ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, color_scheme='dark', is_mobile=True, has_touch=True)
+    page = ctx.new_page()
+    page.goto(url)
+    page.evaluate('(w) => localStorage.setItem("mealplan.week", w)', json.dumps({'weekStart': '2026-10-26', 'raw': '', 'synced': None,
+        'days': [{'lunch': {'text': 'pasta al pesto', 'edited': False}, 'dinner': {'text': 'Toscana / mamma', 'edited': False}}] * 7}))
+    page.reload(); page.wait_for_selector('#home:not([hidden])')
+    page.screenshot(path=out / '10-plan-dark.png')
+    ctx.close()
     b.close()
 srv.shutdown()
