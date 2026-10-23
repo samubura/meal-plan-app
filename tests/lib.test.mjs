@@ -166,3 +166,25 @@ test('Gemini reading: picks the newest Flash model, parses the plan, reports err
     await assert.rejects(readPlanWithGemini('k', 'AAAA', { model: 'models/x' }), (e) => e.status === 429);
   } finally { globalThis.fetch = real; }
 });
+
+test('history: categories, statistics, calendar recovery', async () => {
+  const { categorize, historyStats, mergeCalendarMeals } = await import('../app/lib.js');
+  assert.deepEqual([...categorize('speck e zucchine')].sort(), ['salumi', 'verdure']);
+  assert.deepEqual([...categorize('pasta al sugo + burger veg')].sort(), ['pasta', 'veg']);
+  assert.deepEqual([...categorize('findus e patate')].sort(), ['pesce', 'verdure']);
+  assert.deepEqual([...categorize('passato verdure + primo sale')].sort(), ['formaggi', 'verdure']);
+  assert.deepEqual([...categorize('Ancona')], ['altro']);
+  const week = (l, d) => ({ days: Array.from({ length: 7 }, () => [l, d]), source: 'app' });
+  const h = { '2026-10-19': week('pasta al pesto', 'carne e insalata'), '2026-10-26': week('Pasta al pesto', '') };
+  const s = historyStats(h);
+  assert.equal(s.weeks, 2); assert.equal(s.meals, 21);
+  assert.deepEqual(s.top[0], { dish: 'pasta al pesto', count: 14 });
+  assert.equal(s.categories.find((c) => c.key === 'pasta').count, 14);
+  assert.equal(historyStats(h, { from: '2026-10-26' }).meals, 7);
+  // Calendar events: rebuilt into weeks (Monday-based); weeks the app has are kept.
+  const n = mergeCalendarMeals(h, [{ id: 'meal20261013d', summary: 'Cena: pizza / mamma' }, { id: 'meal20261012l', summary: 'Pranzo: farro' },
+    { id: 'meal20261026l', summary: 'Pranzo: altro' }, { id: 'x1', summary: 'Riunione' }]);
+  assert.equal(n, 1);
+  assert.deepEqual(h['2026-10-12'].days.slice(0, 2), [['farro', ''], ['', 'pizza / mamma']]);
+  assert.equal(h['2026-10-26'].days[0][0], 'Pasta al pesto');
+});

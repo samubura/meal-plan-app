@@ -699,3 +699,78 @@ export function daysFromReads(reads, dishes = [], { k = PICK, decode, dk, cont }
   }
   return days;
 }
+
+// ---- History and statistics ----
+// history: { 'YYYY-MM-DD' (Monday): { days: [[lunch, dinner] x 7], source: 'app' | 'calendar', updated } }
+
+// Categories a dish counts in (one dish can be in several: "speck e zucchine" = salumi + verdure).
+export const CATEGORIES = [
+  ['pasta', 'Pasta', 'pasta spaghetti penne fusilli rigatoni farfalle tagliatelle fettuccine pappardelle lasagne lasagna gnocchi ravioli tortellini tortelloni cappelletti orecchiette trofie linguine bucatini paccheri pastina carbonara amatriciana gricia ragu pesto sugo fregola'],
+  ['cereali', 'Riso e cereali', 'risotto riso farro orzo quinoa couscous cous polenta'],
+  ['carne', 'Carne', 'carne manzo vitello maiale pollo tacchino agnello coniglio salsiccia salsicce polpette polpettone cotoletta cotolette arrosto bistecca filetto fettine scaloppine spezzatino brasato hamburger burger cosci cosce tagliata wurstel straccetti involtini'],
+  ['salumi', 'Salumi', 'speck prosciutto crudo cotto mortadella salame bresaola pancetta guanciale'],
+  ['pesce', 'Pesce', 'pesce salmone tonno merluzzo baccala orata branzino spigola sogliola platessa trota sgombro alici acciughe gamberi gamberetti calamari seppie polpo cozze vongole findus sushi bastoncini'],
+  ['uova', 'Uova', 'uova uovo frittata omelette'],
+  ['formaggi', 'Formaggi', 'mozzarella mozz scamorza provola burrata stracciatella ricotta parmigiano grana pecorino gorgonzola robiola stracchino crescenza caprese formaggio formaggi feta carrozza'],
+  ['legumi', 'Legumi', 'ceci lenticchie fagioli piselli fave legumi'],
+  ['verdure', 'Verdure', 'verdure verdura insalata insalate insalatona zucchine zucchina melanzane melanzana peperoni spinaci bietole broccoli cavolfiore cavolo finocchi carciofi asparagi fagiolini patate patata patatine carote pomodori pomodorini zucca minestrone passato funghi radicchio rucola avocado'],
+  ['veg', 'Vegetariano', 'veg vegetali vegetale vegano vegana tofu'],
+  ['pizza', 'Pizza e panini', 'pizza pizzette piadina piadine focaccia panino panini toast bruschetta bruschette bagel tigelle calzone'],
+  ['fuori', 'Fuori casa', 'fuori ristorante mamma nonna nonni amici comunita mensa'],
+].map(([key, label, words]) => ({ key, label, words: new Set(words.split(' ')) }));
+const VEG_STAND_INS = new Set(['burger', 'hamburger', 'polpette', 'polpettone', 'cotolette', 'cotoletta']);
+
+export function categorize(dish) {
+  const words = norm(dish).match(/[a-z]+/g) || [];
+  const cats = new Set();
+  for (const c of CATEGORIES) if (words.some((w) => c.words.has(w))) cats.add(c.key);
+  if (/primo\s+sale/.test(norm(dish))) cats.add('formaggi');
+  // "burger veg", "polpette veg": not meat.
+  if (cats.has('veg') && cats.has('carne') && words.filter((w) => CATEGORIES[2].words.has(w)).every((w) => VEG_STAND_INS.has(w))) cats.delete('carne');
+  if (words.length && !cats.size) cats.add('altro');
+  return cats;
+}
+
+const dishKey = (d) => norm(d).replace(/[^a-z0-9/+]+/g, ' ').replace(/\s*([/+])\s*/g, ' $1 ').trim();
+
+// Weeks of `history` starting on or after `from` (YYYY-MM-DD, optional).
+export function historyStats(history, { from = '' } = {}) {
+  const weeks = Object.keys(history).filter((w) => w >= from).sort();
+  const byCat = new Map([...CATEGORIES.map((c) => [c.key, 0]), ['altro', 0]]);
+  const dishes = new Map(); // key -> {count, forms: Map(original -> n)}
+  let meals = 0;
+  for (const w of weeks) for (const day of history[w].days) for (const dish of day) {
+    const t = (dish || '').trim();
+    if (!t) continue;
+    meals++;
+    for (const c of categorize(t)) byCat.set(c, byCat.get(c) + 1);
+    const k = dishKey(t), e = dishes.get(k) || { count: 0, forms: new Map() };
+    e.count++; e.forms.set(t, (e.forms.get(t) || 0) + 1);
+    dishes.set(k, e);
+  }
+  const label = (k) => CATEGORIES.find((c) => c.key === k)?.label || 'Altro';
+  return {
+    weeks: weeks.length, meals, out: byCat.get('fuori'),
+    categories: [...byCat].filter(([, n]) => n).map(([key, count]) => ({ key, label: label(key), count })).sort((a, b) => b.count - a.count),
+    top: [...dishes.values()].map((e) => ({ dish: [...e.forms].sort((a, b) => b[1] - a[1])[0][0], count: e.count }))
+      .sort((a, b) => b.count - a.count || a.dish.localeCompare(b.dish)).slice(0, 10),
+  };
+}
+
+// Meal events read back from Google Calendar ([{id: 'meal20261026l', summary: 'Pranzo: …'}]) -> history
+// weeks. Weeks the app already has are left alone (the app's copy is the newer one).
+export function mergeCalendarMeals(history, events) {
+  const found = {};
+  for (const e of events) {
+    const m = /^meal(\d{4})(\d{2})(\d{2})([ld])$/.exec(e.id || '');
+    if (!m) continue;
+    const date = new Date(+m[1], +m[2] - 1, +m[3]), dow = (date.getDay() + 6) % 7;
+    const mon = new Date(date); mon.setDate(date.getDate() - dow);
+    const ws = `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
+    if (history[ws]?.source === 'app') continue;
+    const wk = (found[ws] ??= { days: DAY_KEYS.map(() => ['', '']), source: 'calendar', updated: Date.now() });
+    wk.days[dow][m[4] === 'l' ? 0 : 1] = String(e.summary || '').replace(/^(pranzo|cena|lunch|dinner):\s*/i, '').trim();
+  }
+  Object.assign(history, found);
+  return Object.keys(found).length;
+}

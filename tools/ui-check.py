@@ -26,6 +26,9 @@ def gapi(route):
         return route.fulfill(json={'id': 'me@x', 'summary': 'Me', 'primary': True})
     if 'calendarList' in r.url:
         return route.fulfill(json={'items': [{'id': 'me@x', 'summary': 'Me', 'primary': True}, {'id': 'family@group', 'summary': 'Family'}]})
+    if r.method == 'GET' and '/events?' in r.url:  # meal events read back for the history (one page each)
+        return route.fulfill(json={'items': [{'id': 'meal20261012l', 'summary': 'Pranzo: farro e ceci'}, {'id': 'meal20261013d', 'summary': 'Cena: pizza / mamma'},
+            {'id': 'meal20261026l', 'summary': 'Pranzo: pasta al pesto'}, {'id': 'abc123', 'summary': 'Dentista'}]})
     if r.method == 'POST' and r.url.endswith('/events') and '"id":"meal20261026l"' in (r.post_data or ''):
         return route.fulfill(status=409, json={})  # already there: the app must update it
     if r.method == 'DELETE':
@@ -187,8 +190,36 @@ with sync_playwright() as p:
     page.reload(); page.wait_for_selector('#home:not([hidden])')
     assert dish(page, 0) == d and dish(page, 1) == 'pesce e patate' and page.text_content('#syncText') == 'Sincronizzato'
     print('reload: ok')
+
+    # 9. Statistics from the history; past weeks recovered from the calendar (this week's own copy is kept).
+    page.click('#statsLink'); page.wait_for_selector('#stats:not([hidden])')
+    assert page.text_content('.tile b') == '1' and page.locator('.bars li').count() >= 3, page.text_content('#statsBody')
+    page.click('#recover'); print('recover:', wait_snack(page, 'Recuperata 1 settimana'))
+    assert 'dal calendario' in page.text_content('#weeks') and page.locator('#weeks details').count() == 2
+    page.click('input[name=period][value=all] + span')
+    assert page.text_content('.tile b') == '2'
+    page.screenshot(path=out / '11-stats.png', full_page=True)
+    print('horizontal overflow (stats):', page.evaluate('document.documentElement.scrollWidth > window.innerWidth'))
+    page.go_back(); page.wait_for_selector('#home:not([hidden])')
     print('horizontal overflow:', page.evaluate('document.documentElement.scrollWidth > window.innerWidth'))
     print('page errors:', errors or 'none')
+    ctx.close()
+
+    # Fresh install: nothing on the phone; the weeks and the coming week's plan come back from the calendar.
+    ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    page = ctx.new_page()
+    page.route('**/gcal.js', lambda r: r.fulfill(content_type='text/javascript',
+        body=re.sub(r"export const CLIENT_ID = '[^']*';", "export const CLIENT_ID = 'test';", (root / 'app' / 'gcal.js').read_text())))
+    page.route('https://accounts.google.com/gsi/client', lambda r: r.fulfill(content_type='text/javascript', body=
+        "window.google={accounts:{oauth2:{initTokenClient:(o)=>({requestAccessToken:()=>setTimeout(()=>o.callback({access_token:'t',expires_in:3600}),10)})}}};"))
+    page.route('https://www.googleapis.com/calendar/v3/**', gapi)
+    page.goto(url); page.wait_for_selector('#scan:not([hidden])')
+    page.click('#scanRecover'); page.wait_for_selector('#stats:not([hidden])')
+    page.click('#recover'); page.wait_for_selector('#calSheet.open'); page.click('#calOk')
+    print('fresh recover:', wait_snack(page, 'Recuperate 2 settimane'))
+    page.go_back(); page.go_back(); page.wait_for_selector('#home:not([hidden])')
+    assert dish(page, 0) == 'pasta al pesto' and page.text_content('#syncText') == 'Sincronizzato', dish(page, 0)
+    print('fresh install recovery: ok')
     ctx.close()
 
     # Optional Gemini reading (mocked): used when it answers, on-phone fallback when it fails.
@@ -232,6 +263,8 @@ with sync_playwright() as p:
         'days': [{'lunch': {'text': 'pasta al pesto', 'edited': False}, 'dinner': {'text': 'Toscana / mamma', 'edited': False}}] * 7}))
     page.reload(); page.wait_for_selector('#home:not([hidden])')
     page.screenshot(path=out / '10-plan-dark.png')
+    page.click('#statsLink'); page.wait_for_selector('#stats:not([hidden])')
+    page.screenshot(path=out / '12-stats-dark.png', full_page=True)
     ctx.close()
     b.close()
 srv.shutdown()

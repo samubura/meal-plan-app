@@ -123,3 +123,17 @@ export async function syncWeek(calendarId, days, weekStart, opts, previous = nul
   }
   return { saved, removed };
 }
+
+// The app's meal events in a calendar ([{id: 'meal<yyyymmdd><l|d>', summary}]), to rebuild past weeks
+// (e.g. after reinstalling the app).
+export async function mealEvents(calendarId, since = new Date(Date.now() - 5 * 365 * 864e5)) {
+  const out = [];
+  let page = '';
+  do {
+    const r = await api(`/calendars/${encodeURIComponent(calendarId)}/events?singleEvents=true&maxResults=2500&fields=nextPageToken,items(id,summary)`
+      + `&timeMin=${encodeURIComponent(since.toISOString())}${page && `&pageToken=${encodeURIComponent(page)}`}`);
+    out.push(...(r.items || []).filter((e) => /^meal\d{8}[ld]$/.test(e.id)));
+    page = r.nextPageToken || '';
+  } while (page);
+  return out;
+}

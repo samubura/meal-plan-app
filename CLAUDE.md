@@ -54,6 +54,10 @@ Wikibooks cookbook lexicon, full-res photos (no gain), TrOCR, big general dictio
 - Calendar: one request at a time with retries; known events PUT directly; event reminders (popup, default 30 min);
   the Google account is remembered and passed as `hint` (no account chooser). PWA can't schedule its own notifications.
 - Updates: SW revalidates own files (`cache: 'no-cache'`), "Aggiorna" prompt; version (commit) shown in settings.
+- History: every `savePlan` also upserts `mealplan.history` ({Monday: {days: [[l, d]] x 7, source: app|calendar}});
+  stats screen (`historyStats`, `categorize`/`CATEGORIES` keyword sets in lib.js); "Recupera dal calendario" lists
+  `meal\d{8}[ld]` events (`gcal.js mealEvents`) and `mergeCalendarMeals` fills missing weeks (app copy wins);
+  with no plan on the phone it restores the latest current/future week as the plan.
 - Sheets close by dragging down; browser pull-to-refresh disabled (`overscroll-behavior-y: none`).
 
 ## Pending (checked on the user's Pixel 23 Oct 2026: drag, sheets, Google sign-in in the installed PWA all OK)
