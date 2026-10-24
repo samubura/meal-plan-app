@@ -7,7 +7,7 @@ The user is Italian (talks to me in Italian) and uses an Android phone; UI is It
 ## Layout
 - `app/` = everything published (Pages workflow `.github/workflows/pages.yml` uploads only this folder).
   - `index.html`: app UI (Italian, Material-like) + browser glue. Screens on the history stack (home > scan >
-    working/review): `home` = the saved plan (localStorage `mealplan.week`; drag ≡ to swap slots, tap = edit
+    working/review): `home` = one week at a time (localStorage `mealplan.plans` {Monday: plan}, migrated from the old single `mealplan.week`; ‹ › in the appbar walk plans + history weeks; drag ≡ to swap slots, tap = edit
     sheet with "Sposta in", sync pill dirty/clean via a snapshot), `scan`, `working`, `review` (first sync);
     bottom sheets (edit, settings, calendar pick), snackbar. In-app camera (getUserMedia + ImageCapture,
     system camera fallback). Defaults 12:45/60 and 20:00/60. `tools/ui-check.py` drives the whole flow.
@@ -17,9 +17,10 @@ The user is Italian (talks to me in Italian) and uses an Android phone; UI is It
   - `ocr.js`: PP-OCRv5 Latin recognizer (`createRecognizer(ort, model, dict)`), CTC helpers
     (`toFrames`, `ctcLogP` with a slash class, `greedyWords`), `decodeLine` (word-pair model `makeLM`,
     slash inference) and `decoderFor(dishes)` = what the app uses.
-  - `gemini.js`: optional reading with the user's own AI Studio key (settings; photo sent to Google). `pickModel`
-    lists the key's models and takes the newest Flash; `readPlanWithGemini` uses a JSON schema. Any failure or
-    45 s timeout -> the on-phone pipeline. `tools/gemini-bench.mjs` (key in `private/gemini.key`).
+  - `gemini.js`: optional reading with the user's own AI Studio key (settings; photo sent to Google). `flashModels`
+    lists the key's models, OLDEST full Flash first (the newest are often overloaded for free keys: 503 or no answer for
+    minutes, seen Oct 2026 on 3.6-3.8; user is fine with older models); `readPlanWithGemini` tries 3 in sequence (404 =
+    retired, skipped for free) with a JSON schema. Any failure or 50 s timeout -> the on-phone pipeline. `tools/gemini-bench.mjs` (key in `private/gemini.key`).
   - `gcal.js`: Google Identity Services token client + Calendar API upsert (`syncWeek`, ids `meal<yyyymmdd><l|d>`).
     `CLIENT_ID` is empty until the user does the README setup; the button is hidden while empty.
   - `models/latin_PP-OCRv5_mobile_rec.{onnx,dict.json}` (from HF nakamura196/ppocrv5-mobile-web-onnx, Apache-2.0).
@@ -48,7 +49,8 @@ Rejected after measuring: fine-tuning on the user's pages (better on repeated di
 Wikibooks cookbook lexicon, full-res photos (no gain), TrOCR, big general dictionary, second-line capture, binary/lum inputs.
 
 ## App behaviour worth knowing (Oct 2026)
-- Home: "today" card (tomorrow after dinner; first day before the week; "new week" after it), tap = scroll to the day;
+- Home: opens on this week (else the next planned, else the latest). "Today" card always shows the real today (tomorrow after
+  dinner) from whichever week holds it, else the next planned week's first day, else "scan"; tap = switch to that week + scroll;
   week list with drag-to-swap + undo; round camera FAB. Review highlights unsure meals (`ocr.js unsure`).
 - Gemini: opt-in switch on the scan screen (remembered), shown only with a key Google accepted; "Rileggi con Gemini".
 - Calendar: one request at a time with retries; known events PUT directly; event reminders (popup, default 30 min);

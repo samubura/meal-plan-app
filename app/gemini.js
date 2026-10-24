@@ -21,15 +21,16 @@ async function call(key, path, init = {}, timeout = 15000) {
   return res.json();
 }
 
-// The "flash" models the key can use, best first (models change name over time; the list is the truth).
-// Newest first, full Flash before Flash-Lite, image/audio/preview variants skipped or last.
+// The "flash" models the key can use, in the order they're tried (models change name over time; the list is the truth).
+// Oldest first: the newest are often overloaded for free keys (503, or no answer for minutes, seen Oct 2026 on 3.6-3.8)
+// and an older Flash reads these pages fine. Full Flash before previews, Flash-Lite last; image/audio variants skipped.
 export async function flashModels(key) {
   const { models = [] } = await call(key, '/models?pageSize=200');
   const ok = models.filter((m) => m.supportedGenerationMethods?.includes('generateContent') && /gemini-[\d.]+-flash/.test(m.name)
     && !/image|audio|tts|live|thinking|embedding/.test(m.name));
   const ver = (m) => +(m.name.match(/gemini-([\d.]+)/)?.[1] || 0);
-  const rank = (m) => ver(m) * 10 - (/lite/.test(m.name) ? 3 : 0) - (/preview|exp/.test(m.name) ? 1 : 0);
-  ok.sort((a, b) => rank(b) - rank(a));
+  const rank = (m) => (/lite/.test(m.name) ? 200 : 0) + (/preview|exp/.test(m.name) ? 100 : 0) + ver(m);
+  ok.sort((a, b) => rank(a) - rank(b));
   if (!ok.length) throw new Error('Gemini: nessun modello Flash disponibile con questa chiave');
   return ok.map((m) => m.name); // "models/…"
 }
@@ -58,15 +59,15 @@ Transcribe exactly what is written for each meal, in Italian, as the writer wrot
 Return all 7 days.${dishes.length ? `\nDishes this family often writes (use the exact spelling when one matches what is written):\n${dishes.slice(0, 150).join('; ')}` : ''}`;
 
 // jpeg: base64 JPEG of the page; returns {model, days: [{lunch, dinner}] x 7 (Monday first)}.
-// Busy (503), over its free limit (429, counted per model) or gone (404): the next Flash model is tried.
-// Each model gets `timeout` ms.
+// Busy (503), over its free limit (429, counted per model) or no answer: the next model is tried, `tries` in all.
+// Retired (404, e.g. "no longer available to new users") is skipped without using a try. Each model gets `timeout` ms.
 export async function readPlanWithGemini(key, jpeg, { dishes = [], model, tries = 3, timeout = 15000 } = {}) {
-  const models = model ? [model] : (await flashModels(key)).slice(0, tries);
   let err;
-  for (const m of models) {
+  for (const m of model ? [model] : await flashModels(key)) {
     try { return await readWith(key, m, jpeg, dishes, timeout); } catch (e) {
       err = e;
       if (![404, 429, 500, 503, 504].includes(e.status)) throw e;
+      if (e.status !== 404 && --tries === 0) break;
     }
   }
   throw err;

@@ -140,7 +140,7 @@ test('rotateRGBA: quarter turns, and four of them are the identity', async () =>
   assert.deepEqual(red(r), [0, 1, 2, 3, 4, 5]);
 });
 
-test('Gemini reading: picks the newest Flash model, parses the plan, reports errors', async () => {
+test('Gemini reading: oldest full Flash first, skips retired ones, parses the plan, reports errors', async () => {
   const { readPlanWithGemini, pickModel, flashModels } = await import('../app/gemini.js');
   const real = globalThis.fetch;
   const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
@@ -148,17 +148,21 @@ test('Gemini reading: picks the newest Flash model, parses the plan, reports err
     globalThis.fetch = async (url, init) => {
       if (url.includes('/models?')) return reply(200, { models: [
         { name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
         { name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] },
         { name: 'models/gemini-3.6-flash-image', supportedGenerationMethods: ['generateContent'] },
         { name: 'models/text-embedding-9', supportedGenerationMethods: ['embedContent'] }] });
-      assert.match(url, /gemini-3\.6-flash:generateContent$/);
       assert.equal(init.headers['x-goog-api-key'], 'k');
+      if (url.includes('gemini-2.5-flash:')) return reply(404, { error: { message: 'no longer available' } });
+      if (url.includes('gemini-3.6-flash:')) return reply(503, { error: { message: 'high demand' } }); // busy: the next one answers
+      assert.match(url, /gemini-3\.5-flash-lite:generateContent$/);
       const days = [{ day: 'monday', lunch: 'pasta  al  pesto', dinner: 'pizza/mamma' }, { day: 'sunday', lunch: 'Roma', dinner: 'Roma' }];
       return reply(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ days }) }] } }] });
     };
-    assert.equal(await pickModel('k'), 'models/gemini-3.6-flash');
-    assert.deepEqual(await flashModels('k'), ['models/gemini-3.6-flash', 'models/gemini-3.5-flash-lite']);
+    assert.equal(await pickModel('k'), 'models/gemini-2.5-flash');
+    assert.deepEqual(await flashModels('k'), ['models/gemini-2.5-flash', 'models/gemini-3.6-flash', 'models/gemini-3.5-flash-lite']);
     const r = await readPlanWithGemini('k', 'AAAA');
+    assert.equal(r.model, 'models/gemini-3.5-flash-lite');
     assert.deepEqual(r.days[0], { lunch: 'pasta al pesto', dinner: 'pizza / mamma' });
     assert.deepEqual(r.days[6], { lunch: 'Roma', dinner: 'Roma' });
     assert.deepEqual(r.days[3], { lunch: '', dinner: '' });
