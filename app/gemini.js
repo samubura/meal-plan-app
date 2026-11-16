@@ -22,15 +22,23 @@ async function call(key, path, init = {}, timeout = 15000) {
 }
 
 // The "flash" models the key can use, in the order they're tried (models change name over time; the list is the truth).
-// Oldest first: the newest are often overloaded for free keys (503, or no answer for minutes, seen Oct 2026 on 3.6-3.8)
-// and an older Flash reads these pages fine. Full Flash before previews, Flash-Lite last; image/audio variants skipped.
+// Measured Nov 2026 with a free key: the newest full Flash (3.7, 3.8, gemini-flash-latest) answer 503 or hang; older
+// full Flash answer but in 20-40 s; Flash-Lite answers in 1-35 s (usually ~10) and reads these pages just as well
+// (14/14 on a real page, like 3-flash-preview). Retired ones (2.5) give 404. So: gemini-flash-lite-latest first (it
+// always follows Google's newest Lite, no names to chase), then full Flash oldest first, then the other Lite ones
+// newest first, previews and gemini-flash-latest last. Image/audio/tts variants skipped.
 export async function flashModels(key) {
   const { models = [] } = await call(key, '/models?pageSize=200');
   const ok = models.filter((m) => m.supportedGenerationMethods?.includes('generateContent') && /gemini-([\d.]+-)?flash/.test(m.name)
     && !/image|audio|tts|live|thinking|embedding/.test(m.name));
   const ver = (m) => +(m.name.match(/gemini-([\d.]+)/)?.[1] || 0);
-  // "-latest" aliases (gemini-flash-latest) point at the newest model: after the numbered full Flash ones.
-  const rank = (m) => (/lite/.test(m.name) ? 200 : 0) + (/preview|exp/.test(m.name) ? 100 : 0) + (/latest/.test(m.name) ? 50 : 0) + ver(m);
+  const rank = (m) => {
+    const lite = /lite/.test(m.name), latest = /latest/.test(m.name), preview = /preview|exp/.test(m.name);
+    if (lite && latest) return 0;
+    if (latest) return 90;
+    if (lite) return (preview ? 80 : 60) - ver(m);
+    return (preview ? 30 : 10) + ver(m);
+  };
   ok.sort((a, b) => rank(a) - rank(b));
   if (!ok.length) throw new Error('Gemini: nessun modello Flash disponibile con questa chiave');
   return ok.map((m) => m.name); // "models/…"
@@ -60,30 +68,28 @@ Transcribe exactly what is written for each meal, in Italian, as the writer wrot
 Return all 7 days.${dishes.length ? `\nDishes this family often writes (use the exact spelling when one matches what is written):\n${dishes.slice(0, 150).join('; ')}` : ''}`;
 
 // jpeg: base64 JPEG of the page; returns {model, days: [{lunch, dinner}] x 7 (Monday first)}.
-// Free keys get frequent 503s ("high demand") that usually clear within seconds, so instead of a fixed number of
-// tries, the models are tried in turn (`prefer` = the one that answered last time, first) and the round is repeated
-// after a growing pause, until `budget` ms are spent. Busy (503/500) or no answer (504): kept for the next round.
-// Retired (404) or over its free daily limit (429, counted per model): dropped. Each attempt gets at most `timeout` ms.
-// onRetry(model, error) is called after each failed attempt (the app shows "riprovo").
+// Free keys allow ~5 requests a minute per model, so at most `tries` requests in all (404s, answered at once, don't
+// count). Models are tried in turn (`prefer` = the one that answered last time, first), with a short pause before
+// going round again. Busy (503/500) or no answer within `timeout` (504): next model. Retired (404) or over its free
+// limit (429): dropped. Answers can take 20-40 s, so `timeout` is generous. onRetry(model, error) after each failure.
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-export async function readPlanWithGemini(key, jpeg, { dishes = [], model, prefer, budget = 50000, timeout = 20000, onRetry, sleep = pause } = {}) {
+export async function readPlanWithGemini(key, jpeg, { dishes = [], model, prefer, tries = 4, budget = 100000, timeout = 45000, onRetry, sleep = pause } = {}) {
   const end = Date.now() + budget, left = () => end - Date.now();
   let list = model ? [model] : await flashModels(key);
   if (prefer && list.includes(prefer)) list = [prefer, ...list.filter((m) => m !== prefer)];
   let err;
-  for (let round = 0; list.length; round++) {
+  for (let round = 0; list.length && tries > 0; round++) {
+    if (round) await sleep(Math.min(3000 * round, 8000));
     for (const m of [...list]) {
-      if (err && left() < 3000) throw err;
+      if (tries <= 0 || (err && left() < 5000)) throw err;
       try { return await readWith(key, m, jpeg, dishes, Math.max(1000, Math.min(timeout, left()))); } catch (e) {
         err = e;
         if (![404, 429, 500, 503, 504].includes(e.status)) throw e;
+        if (e.status !== 404) tries--;
         if (e.status === 404 || e.status === 429) list = list.filter((x) => x !== m);
         onRetry?.(m, e);
       }
     }
-    const wait = Math.min(2000 * 2 ** round, 8000) * (0.75 + Math.random() / 2);
-    if (!list.length || left() < wait + 3000) break;
-    await sleep(wait);
   }
   throw err;
 }

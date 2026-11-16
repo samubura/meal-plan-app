@@ -140,7 +140,7 @@ test('rotateRGBA: quarter turns, and four of them are the identity', async () =>
   assert.deepEqual(red(r), [0, 1, 2, 3, 4, 5]);
 });
 
-test('Gemini reading: oldest full Flash first, skips retired ones, retries busy ones, parses the plan, reports errors', async () => {
+test('Gemini reading: Flash-Lite latest first, then oldest full Flash, skips retired ones, retries busy ones, parses the plan, reports errors', async () => {
   const { readPlanWithGemini, pickModel, flashModels } = await import('../app/gemini.js');
   const real = globalThis.fetch;
   const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
@@ -151,16 +151,18 @@ test('Gemini reading: oldest full Flash first, skips retired ones, retries busy 
         { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
         { name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] },
         { name: 'models/gemini-3.6-flash-image', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-flash-lite-latest', supportedGenerationMethods: ['generateContent'] },
         { name: 'models/text-embedding-9', supportedGenerationMethods: ['embedContent'] }] });
       assert.equal(init.headers['x-goog-api-key'], 'k');
+      if (url.includes('gemini-flash-lite-latest:')) return reply(503, { error: { message: 'high demand' } });
       if (url.includes('gemini-2.5-flash:')) return reply(404, { error: { message: 'no longer available' } });
       if (url.includes('gemini-3.6-flash:')) return reply(503, { error: { message: 'high demand' } }); // busy: the next one answers
       assert.match(url, /gemini-3\.5-flash-lite:generateContent$/);
       const days = [{ day: 'monday', lunch: 'pasta  al  pesto', dinner: 'pizza/mamma' }, { day: 'sunday', lunch: 'Roma', dinner: 'Roma' }];
       return reply(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ days }) }] } }] });
     };
-    assert.equal(await pickModel('k'), 'models/gemini-2.5-flash');
-    assert.deepEqual(await flashModels('k'), ['models/gemini-2.5-flash', 'models/gemini-3.6-flash', 'models/gemini-3.5-flash-lite']);
+    assert.equal(await pickModel('k'), 'models/gemini-flash-lite-latest');
+    assert.deepEqual(await flashModels('k'), ['models/gemini-flash-lite-latest', 'models/gemini-2.5-flash', 'models/gemini-3.6-flash', 'models/gemini-3.5-flash-lite']);
     const r = await readPlanWithGemini('k', 'AAAA');
     assert.equal(r.model, 'models/gemini-3.5-flash-lite');
     assert.deepEqual(r.days[0], { lunch: 'pasta al pesto', dinner: 'pizza / mamma' });
@@ -172,12 +174,17 @@ test('Gemini reading: oldest full Flash first, skips retired ones, retries busy 
       if (url.includes('/models?')) return reply(200, { models: ['3.6-flash', 'flash-latest', '3.5-flash-lite'].map((v) => ({ name: `models/gemini-${v}`, supportedGenerationMethods: ['generateContent'] })) });
       calls.push(url.match(/models\/([^:]+):/)[1]);
       if (url.includes('lite')) return reply(429, { error: { message: 'Quota exceeded' } }); // dropped, not retried
-      if (calls.length < 5) return reply(503, { error: { message: 'high demand' } });
+      if (calls.length < 4) return reply(503, { error: { message: 'high demand' } });
       return reply(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ days: [] }) }] } }] });
     };
     const g = await readPlanWithGemini('k', 'AAAA', { prefer: 'models/gemini-flash-latest', sleep: async () => { waits++; } });
-    assert.deepEqual(calls, ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-3.6-flash']);
-    assert.equal(g.model, 'models/gemini-3.6-flash');
+    assert.deepEqual(calls, ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest']);
+    assert.equal(g.model, 'models/gemini-flash-latest');
+    // At most 4 requests (free keys: ~5 a minute), then the error.
+    calls = [];
+    globalThis.fetch = async (url) => url.includes('/models?') ? reply(200, { models: [{ name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] }] }) : (calls.push(url), reply(503, { error: { message: 'busy' } }));
+    await assert.rejects(readPlanWithGemini('k', 'AAAA', { sleep: async () => {} }), (e) => e.status === 503);
+    assert.equal(calls.length, 4);
     assert.equal(waits, 1);
     globalThis.fetch = async () => reply(429, { error: { message: 'Quota exceeded' } });
     await assert.rejects(readPlanWithGemini('k', 'AAAA', { model: 'models/x' }), (e) => e.status === 429);

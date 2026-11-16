@@ -1182,7 +1182,7 @@ function jpegFor(canvas, max = 1600) {
 let lastJpeg = null;
 // Gemini with retries (see gemini.js); the model that answered is tried first next time.
 async function readGemini(onRetry) {
-  const g = await withTimeout(readPlanWithGemini(store.get('geminiKey'), lastJpeg, { dishes: dishes(), prefer: store.get('geminiModel'), budget: 50000, onRetry }), 60000);
+  const g = await withTimeout(readPlanWithGemini(store.get('geminiKey'), lastJpeg, { dishes: dishes(), prefer: store.get('geminiModel'), onRetry }), 110000);
   if (!g.days.some((d) => d.lunch || d.dinner)) throw new Error('Gemini non ha trovato pasti');
   store.set('geminiModel', g.model);
   return g;
