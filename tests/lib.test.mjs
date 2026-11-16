@@ -140,7 +140,7 @@ test('rotateRGBA: quarter turns, and four of them are the identity', async () =>
   assert.deepEqual(red(r), [0, 1, 2, 3, 4, 5]);
 });
 
-test('Gemini reading: oldest full Flash first, skips retired ones, parses the plan, reports errors', async () => {
+test('Gemini reading: oldest full Flash first, skips retired ones, retries busy ones, parses the plan, reports errors', async () => {
   const { readPlanWithGemini, pickModel, flashModels } = await import('../app/gemini.js');
   const real = globalThis.fetch;
   const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
@@ -166,6 +166,19 @@ test('Gemini reading: oldest full Flash first, skips retired ones, parses the pl
     assert.deepEqual(r.days[0], { lunch: 'pasta al pesto', dinner: 'pizza / mamma' });
     assert.deepEqual(r.days[6], { lunch: 'Roma', dinner: 'Roma' });
     assert.deepEqual(r.days[3], { lunch: '', dinner: '' });
+    // All busy at first: rounds repeat after a pause until one answers; the preferred model goes first.
+    let calls = [], waits = 0;
+    globalThis.fetch = async (url) => {
+      if (url.includes('/models?')) return reply(200, { models: ['3.6-flash', 'flash-latest', '3.5-flash-lite'].map((v) => ({ name: `models/gemini-${v}`, supportedGenerationMethods: ['generateContent'] })) });
+      calls.push(url.match(/models\/([^:]+):/)[1]);
+      if (url.includes('lite')) return reply(429, { error: { message: 'Quota exceeded' } }); // dropped, not retried
+      if (calls.length < 5) return reply(503, { error: { message: 'high demand' } });
+      return reply(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ days: [] }) }] } }] });
+    };
+    const g = await readPlanWithGemini('k', 'AAAA', { prefer: 'models/gemini-flash-latest', sleep: async () => { waits++; } });
+    assert.deepEqual(calls, ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-3.6-flash']);
+    assert.equal(g.model, 'models/gemini-3.6-flash');
+    assert.equal(waits, 1);
     globalThis.fetch = async () => reply(429, { error: { message: 'Quota exceeded' } });
     await assert.rejects(readPlanWithGemini('k', 'AAAA', { model: 'models/x' }), (e) => e.status === 429);
   } finally { globalThis.fetch = real; }

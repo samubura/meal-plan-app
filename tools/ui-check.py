@@ -241,12 +241,16 @@ with sync_playwright() as p:
     ctx.close()
 
     # Optional Gemini reading (mocked): used when it answers, on-phone fallback when it fails.
-    for mode in ('ok', 'quota', 'reread'):
+    for mode in ('ok', 'busy', 'quota', 'reread'):
         ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         page = ctx.new_page()
+        busy = [0]
         def gem(route, *_, mode=mode):  # Playwright may pass the request as 2nd argument
             if '/models?' in route.request.url:
                 return route.fulfill(json={'models': [{'name': 'models/gemini-3.6-flash', 'supportedGenerationMethods': ['generateContent']}]})
+            if mode == 'busy' and busy[0] < 2:  # Google's "high demand": the app waits and tries again
+                busy[0] += 1
+                return route.fulfill(status=503, json={'error': {'message': 'high demand'}})
             if mode == 'quota':
                 return route.fulfill(status=429, json={'error': {'message': 'Quota exceeded'}})
             days = [{'day': d, 'lunch': 'speck e zucchine', 'dinner': 'Toscana / mamma'} for d in ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')]
@@ -266,6 +270,7 @@ with sync_playwright() as p:
             assert page.input_value('#r-mon-lunch') == 'speck e zucchine'
             print('gemini reread: ok'); ctx.close(); continue
         note, mon = page.text_content('#reviewNote'), page.input_value('#r-mon-lunch')
+        if mode == 'busy': assert busy[0] == 2 and note.startswith('Letto con Gemini') and mon == 'speck e zucchine', (note, mon)
         if mode == 'ok':
             assert note.startswith('Letto con Gemini') and mon == 'speck e zucchine' and page.input_value('#r-mon-dinner') == 'Toscana / mamma', (note, mon)
         else:

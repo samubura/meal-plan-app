@@ -19,8 +19,9 @@ The user is Italian (talks to me in Italian) and uses an Android phone; UI is It
     slash inference) and `decoderFor(dishes)` = what the app uses.
   - `gemini.js`: optional reading with the user's own AI Studio key (settings; photo sent to Google). `flashModels`
     lists the key's models, OLDEST full Flash first (the newest are often overloaded for free keys: 503 or no answer for
-    minutes, seen Oct 2026 on 3.6-3.8; user is fine with older models); `readPlanWithGemini` tries 3 in sequence (404 =
-    retired, skipped for free) with a JSON schema. Any failure or 50 s timeout -> the on-phone pipeline. `tools/gemini-bench.mjs` (key in `private/gemini.key`).
+    minutes, seen Oct 2026 on 3.6-3.8; user is fine with older models); `readPlanWithGemini` rotates through them
+    (last good model first, `mealplan.geminiModel`), repeating rounds after 2/4/8 s pauses within a 50 s budget (503 = busy,
+    retried; 404 retired / 429 daily quota = dropped), JSON schema; status shows "riprovo (n)". Then -> the on-phone pipeline. `tools/gemini-bench.mjs` (key in `private/gemini.key`).
   - `gcal.js`: Google Identity Services token client + Calendar API upsert (`syncWeek`, ids `meal<yyyymmdd><l|d>`).
     `CLIENT_ID` is empty until the user does the README setup; the button is hidden while empty.
   - `models/latin_PP-OCRv5_mobile_rec.{onnx,dict.json}` (from HF nakamura196/ppocrv5-mobile-web-onnx, Apache-2.0).

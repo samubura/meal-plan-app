@@ -512,7 +512,7 @@ import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/o
 import { scanPlan, buildICS, DAY_KEYS, historyStats, mergeCalendarMeals, CATEGORIES } from './lib.js';
 import { createRecognizer, decoderFor, unsure } from './ocr.js';
 import { CLIENT_ID, loadGis, signIn, calendars, syncWeek, googleAccount, forgetGoogle, mealEvents } from './gcal.js';
-import { readPlanWithGemini, flashModels } from './gemini.js';
+import { readPlanWithGemini, flashModels, geminiWhy } from './gemini.js';
 
 // Single-threaded WASM: GitHub Pages can't send the headers threads need, and it's gentle on memory.
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
@@ -1135,8 +1135,8 @@ $('reread').addEventListener('click', async () => {
   const btn = $('reread');
   btn.disabled = true; btn.textContent = 'Leggo con Gemini…';
   try {
-    const g = await withTimeout(readPlanWithGemini(store.get('geminiKey'), lastJpeg, { dishes: dishes() }), 50000);
-    if (!g.days.some((d) => d.lunch || d.dinner)) throw new Error('Gemini non ha trovato pasti');
+    let n = 0;
+    const g = await readGemini(() => { btn.textContent = `Gemini occupato, riprovo… (${++n})`; });
     g.days.forEach((d, i) => SLOTS.forEach((s) => {
       const el = $(`r-${DAY_KEYS[i]}-${s}`);
       el.value = d[s]; delete el.dataset.edited; el.classList.remove('unsure'); autosize(el);
@@ -1145,7 +1145,7 @@ $('reread').addEventListener('click', async () => {
     $('reviewNote').textContent = 'Riletto con Gemini. Controlla comunque i pasti prima di salvare.';
     btn.hidden = true;
   } catch (e) {
-    snack(`Gemini non disponibile (${e.status === 429 ? 'limite gratuito raggiunto' : e.message}).`, true);
+    snack(`Gemini non disponibile (${geminiWhy(e)}).`, true);
   } finally { btn.disabled = false; btn.textContent = 'Rileggi con Gemini'; }
 });
 $('saveOnly').addEventListener('click', () => saveReview(false));
@@ -1180,6 +1180,13 @@ function jpegFor(canvas, max = 1600) {
   return c.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
 let lastJpeg = null;
+// Gemini with retries (see gemini.js); the model that answered is tried first next time.
+async function readGemini(onRetry) {
+  const g = await withTimeout(readPlanWithGemini(store.get('geminiKey'), lastJpeg, { dishes: dishes(), prefer: store.get('geminiModel'), budget: 50000, onRetry }), 60000);
+  if (!g.days.some((d) => d.lunch || d.dinner)) throw new Error('Gemini non ha trovato pasti');
+  store.set('geminiModel', g.model);
+  return g;
+}
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Gemini non ha risposto in tempo')), ms))]);
 async function scan(file) {
   go('working');
@@ -1196,13 +1203,13 @@ async function scan(file) {
     if (key && $('useGemini').checked && navigator.onLine !== false) {
       status('Leggo con Gemini…', 0.05);
       try {
-        const g = await withTimeout(readPlanWithGemini(key, lastJpeg, { dishes: dishes() }), 50000); // 3 models x 15 s at most
-        if (!g.days.some((d) => d.lunch || d.dinner)) throw new Error('Gemini non ha trovato pasti');
+        let n = 0;
+        const g = await readGemini(() => status(`Gemini è occupato, riprovo… (${++n})`, Math.min(0.9, 0.05 + n * 0.05)));
         openReview(g.days, `Letto con Gemini (${g.model.replace('models/', '')}).`, 'Letto con Gemini. Controlla comunque i pasti prima di salvare.', null, 'gemini');
         return;
       } catch (e) {
         console.warn(e);
-        geminiNote = `Gemini non disponibile (${e.status === 429 ? 'limite gratuito raggiunto' : e.message}): ho usato la lettura sul telefono. `;
+        geminiNote = `Gemini non disponibile (${geminiWhy(e)}): ho usato la lettura sul telefono. `;
       }
     }
     status('Carico il lettore della scrittura', 0.02);
